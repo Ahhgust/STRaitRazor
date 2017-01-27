@@ -446,7 +446,7 @@ Trie::makeTrieFromConfig(vector<Config> *c, unsigned numStrs, unsigned char dist
 
   //  cerr << memNeeded << " bytes asked for ; Mem unused: " << memNeeded - (mem-root) << endl;
 
-  if (mem-root > memNeeded) {
+  if (mem-root > (int) memNeeded) {
     cerr << "Error with the maths. Email the author (August) to fix this!" << endl;
     exit(1);
   }

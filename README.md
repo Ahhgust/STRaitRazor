@@ -66,7 +66,7 @@ And add zcat, bzip2 and grep (and any other utility that catches your fancy. egr
 
 Compiling the code 
 Mac/linux:
-Simply type:
+Simply type:<br>
 <blockquote>	make </blockquote>
 
 Windows:

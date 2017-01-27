@@ -39,7 +39,7 @@ class Trie {
 
   // makes a trie of all of the anchors in the config file, +/- distance substitution (distance can be 0, 1 or 2)
   // plus it adds the motifs...
-  void makeTrieFromConfig(std::vector<Config> *c, unsigned numStrs, unsigned char distance);
+  void makeTrieFromConfig(std::vector<Config> *c, unsigned numStrs, unsigned char distance, unsigned char motifDistance);
 
   void addPermutations(std::string w, unsigned wordLen, unsigned id, unsigned char type1, unsigned char type2, unsigned char distance);
 

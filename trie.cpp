@@ -384,11 +384,15 @@ Trie::nodesUsed() {
 
 
 void
-Trie::makeTrieFromConfig(vector<Config> *c, unsigned numStrs, unsigned char distance) {
+Trie::makeTrieFromConfig(vector<Config> *c, unsigned numStrs, unsigned char distance, unsigned char motifDistance) {
   unsigned i, nf, nr, memNeeded=0;
 
   if (distance >2) {
-    cerr << "Sorry, the max distance supported with trie-search is 2; " << distance   << " is too big!" << endl;
+    cerr << "Sorry, the max anchor distance supported with trie-search is 2; " << distance   << " is too big!" << endl;
+    exit(EXIT_FAILURE);
+  } else if (motifDistance > 1) {
+    cerr << "Sorry, the max motif distance supported with trie-search is 1; " << motifDistance   << " is too big!" << endl;
+    exit(EXIT_FAILURE);
   }
 
 
@@ -426,6 +430,9 @@ Trie::makeTrieFromConfig(vector<Config> *c, unsigned numStrs, unsigned char dist
     }
 
     memNeeded += ((*c)[i].motifLength+1) *2; // the motifs are also added
+    if (motifDistance == 1) {
+      memNeeded += (8*((*c)[i].motifLength+1)) + 3* ((*c)[i].motifLength)*((*c)[i].motifLength-1);
+    }
   }
   
   initMem(memNeeded);
@@ -439,9 +446,13 @@ Trie::makeTrieFromConfig(vector<Config> *c, unsigned numStrs, unsigned char dist
 		    (unsigned char) REVERSEFLANK_RC, distance);
 
 
+    if (motifDistance==0) {
     // add the motif (no degeneracy in this)
-    addWord((*c)[i].strMotif.c_str(), (*c)[i].motifLength, i, MOTIF);
-    addWordRC((*c)[i].strMotif.c_str(), (*c)[i].motifLength, i, MOTIF_RC);
+      addWord((*c)[i].strMotif.c_str(), (*c)[i].motifLength, i, MOTIF);
+      addWordRC((*c)[i].strMotif.c_str(), (*c)[i].motifLength, i, MOTIF_RC);
+    } else {
+      addPermutations((*c)[i].strMotif, (*c)[i].motifLength, i, (unsigned char) MOTIF, (unsigned char) MOTIF_RC, motifDistance);
+    }
   } 
 
   //  cerr << memNeeded << " bytes asked for ; Mem unused: " << memNeeded - (mem-root) << endl;

@@ -25,6 +25,7 @@ const float VERSION_NUM = 3.0;
 
 using namespace std;
 
+// the number of fastq records kept in memory (*2 ; one for each buffer in the double buffer)
 #define RECSINMEM 1000000
 unsigned LASTREC = UINT_MAX;
 
@@ -41,7 +42,8 @@ struct Options {
   char *config; // required! This is the NAME of config file
   int numThreads;
   unsigned char mode; // search style
-  unsigned char distance; // hamming or unit edit distance; used when constructing the trie
+  unsigned char distance; // hamming distance; used with anchors
+  unsigned char motifDistance; // hamming distance ; used with motifs
   bool useTrie; // defunct; always 1
   char *type;// default: NULL can constrain the config file to be just AUTOSOMES (filters on type in the config file)
 };
@@ -592,12 +594,13 @@ usage(char *arg0) {
     "\t-n (no reverse complement-- this turns off the default behavior of reverse-complementing matches on the negative strand)" << endl <<
     "\t-v (verbose ; prints out additional diagnostic information)" << endl << endl <<
 
-    "\t-d distance (default 1; the maximum Hamming distance used with anchor search. can only be 0, 1 or 2)" << endl <<
+    "\t-a integer (default 1; the maximum Hamming distance used with anchor search. can only be 0, 1 or 2)" << endl <<
+    "\t-m integer (default 0; the maximum Hamming distance used with motif search. can only be 0 or 1)" << endl <<
     "\t-c configFile (REQUIRED; the locus config file used to define the STRs)" << endl << 
     "\t-p integer (The number of processors/cpus used)" << endl <<
     "\t-t filter (This filters on Type, e.g. AUTOSOMES; ie, it restricts the output to STRs that have the same type as specified in column 2 of the config file)" << endl <<
     "\t-o filename (This writes the output to filename, as opposed to standard out)" << endl <<
-    "\t-m integer (Min match; this causes haplotypes with less than m occurences to be omitted from the final output file" << endl << endl;
+    "\t-f integer (Min match; this causes haplotypes with less than f occurences to be omitted from the final output file" << endl << endl;
   exit(EXIT_FAILURE);
 }
 
@@ -620,7 +623,9 @@ parseArgs(int argc, char **argv, Options &opt) {
   opt.numThreads=1;
   opt.useTrie=1;
   opt.type=NULL;
+  opt.motifDistance=0;
   opt.distance=1;
+
 
   bool errors=0;
   
@@ -650,9 +655,9 @@ parseArgs(int argc, char **argv, Options &opt) {
 	  ++i;
 	  opt.out = fopen(argv[i], "w");
 	}
-      } else if (argv[i][1] == 'm') { // setting min records to print
+      } else if (argv[i][1] == 'f') { // setting min records to print
 	if (i == argc-1) {
-	  cerr << endl << "Option -m requires an integer; the smallest number of haplotype-counts that are allowed to be printed" << endl << endl;
+	  cerr << endl << "Option -f requires an integer; the smallest number of haplotype-counts that are allowed to be printed" << endl << endl;
 	  errors=1;
 	} else {
 	  ++i;
@@ -662,25 +667,38 @@ parseArgs(int argc, char **argv, Options &opt) {
 	    ++s;
 	  }
 	  if (s == argv[i]) {
-	    cerr << endl << "Option -m requires an integer; the smallest number of haplotype-counts that are allowed to be printed, not " << s  << endl << endl;
+	    cerr << endl << "Option -f requires an integer; the smallest number of haplotype-counts that are allowed to be printed, not " << s  << endl << endl;
 	    errors=1;
 	  }
 	}
-      } else if (argv[i][1] == 'd') { // setting the degeneracy/distance used when constructing the trie
+      } else if (argv[i][1] == 'a') { // setting the degeneracy/distance with anchors when constructing the trie
 	if (i == argc-1) {
-	  cerr << endl << "Option -d requires an integer in the range [0,2] (inclusive); the (max) edit/hamming distance used when searching for anchors" << endl << endl;
+	  cerr << endl << "Option -a requires an integer in the range [0,2] (inclusive); the (max) hamming distance used when searching for anchors" << endl << endl;
 	  errors=1;
 	} else {
 	  ++i;
 	  char *s = argv[i];
 	  opt.distance = (*s - '0');
 	  if (s[1] != 0 || opt.distance > 2) {
-	    cerr << endl << "Option -d requires a an integer in the range [0,2] (inclusive); the (max) hamming distance used when searching for anchors, not: " << s << endl;
+	    cerr << endl << "Option -a requires a an integer in the range [0,2] (inclusive); the (max) hamming distance used when searching for anchors, not: " << s << endl;
 	    errors=1;
 	  }
 	  //	  cerr << "Distance is " << ((unsigned)opt.distance) << endl;
 	}
-      } else if (argv[i][1] == 'p') { // setting min records to print
+      } else if (argv[i][1] == 'm') { // setting the degeneracy/distance with motifs when constructing the trie
+	if (i == argc-1) {
+	  cerr << endl << "Option -m requires a 0 or a 1; the (max) hamming distance used when searching for motifs" << endl << endl;
+	  errors=1;
+	} else {
+	  ++i;
+	  char *s = argv[i];
+	  opt.motifDistance = (*s - '0');
+	  if (s[1] != 0 || opt.motifDistance > 1) {
+	    cerr << endl << "Option -m requires a 0 or a 1 (inclusive); the (max) hamming distance used when searching for motifs, not: " << s << endl;
+	    errors=1;
+	  }
+	}
+      } else if (argv[i][1] == 'p') { // setting the number of threads/processors
 	if (i == argc-1) {
 	  cerr << endl << "Option -p requires an integer; the number of processors needed" << endl << endl;
 	  errors=1;
@@ -906,7 +924,7 @@ main(int argc, char **argv) {
 
 
   trie = new Trie;
-  trie->makeTrieFromConfig(c, numStrs, opt.distance);
+  trie->makeTrieFromConfig(c, numStrs, opt.distance, opt.motifDistance);
 
 
 #ifndef NOTHREADS

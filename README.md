@@ -27,12 +27,19 @@ The following unix utilities:
 	zcat 
 	bzip2
 	grep
+	7zip (not really a unix utility per se, but it's handy)
 
-which allows str8 to operate on compressed gzip (with zcat) or bz2 (with bzip2) files. Otherwise str8 only operates on (uncompressed) fastq files. grep can be used to parse out particular markers (e.g., 
+which allows str8 to operate on compressed gzip (with zcat) or bz2 (with bzip2) files a la:
 
->
-> grep -w vWR allsequences.txt > vWR.txt
-> > Testing blockiness
+      zcat file.fastq.gz | str8 -c configFile > allSequences.txt
+      
+or for Windows users:
+	
+      7z file.fastq.gz -so | str8 -c configFile > allSequences.txt
+
+Otherwise str8 only operates on (uncompressed) fastq files. grep can be used to parse out particular markers (e.g., 
+
+     grep -w vWR allsequences.txt > vWR.txt 
 
 will give you all of the lines that contain the character string vWR in the allsequences.txt file, and the > redirects that to a file) from the allsequences.txt file.
 

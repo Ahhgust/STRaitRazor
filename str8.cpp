@@ -65,12 +65,13 @@ struct Options {
   bool noReverseComplement; // turns of reverse-complementing markers inferred to be on the negative strand
   FILE *out; // the output file. default=stdout
   char *config; // required! This is the NAME of config file
-  int numThreads;
+  int numThreads; // default==1
   unsigned char mode; // search style
   unsigned char distance; // hamming distance; used with anchors
   unsigned char motifDistance; // hamming distance ; used with motifs
   bool useTrie; // defunct; always 1
   char *type;// default: NULL can constrain the config file to be just AUTOSOMES (filters on type in the config file)
+  bool labelReads; // default 0; outputs a fastq, only of reads for loci that we want trimmed to just those loci
 };
 
 
@@ -198,6 +199,8 @@ sortKeyAndValue(pair<Report, pair<unsigned, unsigned> > first, pair<Report, pair
 void
 printReports(FILE *stream, map< Report, pair <unsigned, unsigned>, CompareReport> &hash, unsigned minCount, bool noRC) {
 
+  if (opt.labelReads)
+    return;
 
   vector< pair<Report, pair<unsigned, unsigned> > > vec(hash.begin(), hash.end() );
   sort( vec.begin(), vec.end() , sortKeyAndValue);
@@ -344,11 +347,71 @@ buffer(Fastq mem[]) {
 
  */
 void
-makeRecord(const char* dna, unsigned left, unsigned right, unsigned char orientation, unsigned strIndex, int id) {
+makeRecord(Fastq &fq, unsigned left, unsigned right, unsigned char orientation, unsigned strIndex, int id) {
 
 
+  int len = (int) (right - left);  
+  // this emits a FASTQ file, trimmed and labeled
+  if (opt.labelReads) {
+    fprintf(opt.out, "%s\n", fq.id.c_str());
+    
+    if (orientation==FORWARDFLANK) { // print the forward
+      for (unsigned i=left; i < right; ++i) {
+	fprintf(opt.out, "%c", fq.dna[i]);
+      }
+      fprintf(opt.out, "\n+ F ");
+      fprintf(opt.out, "%s\n", (*c)[strIndex].locusName.c_str());
+      for (unsigned i=left; i < right; ++i) {
+	fprintf(opt.out, "%c", fq.qual[i]);
+      }
+      fprintf(opt.out, "\n");
+    } else { // print out the reverse complement
 
-  int len = (int) (right - left);
+      // joy of unsigned integers;
+      // make sure that i never equals 0. otherwise bad things
+      // happen!
+      char b;
+      for (unsigned i=right-1; i > left; --i) {
+	b = fq.dna[i];
+	if (b=='T') 
+	  b = 'A';
+	else if (b == 'A')
+	  b = 'T';
+	else if (b == 'G')
+	  b = 'C';
+	else if (b == 'C')
+	  b = 'G';
+
+	fprintf(opt.out, "%c", b);
+      }
+
+      b = fq.dna[left];
+      if (b=='T') 
+	b = 'A';
+      else if (b == 'A')
+	b = 'T';
+      else if (b == 'G')
+	b = 'C';
+      else if (b == 'C')
+	b = 'G';
+
+      fprintf(opt.out, "%c\n+ R ", b);
+      fprintf(opt.out, "%s\n", (*c)[strIndex].locusName.c_str());
+
+      for (unsigned i=right-1; i > left; --i) {
+	fprintf(opt.out, "%c", fq.qual[i]);
+      }
+      fprintf(opt.out, "%c\n", fq.qual[left]);
+    }
+
+
+    return;
+  }
+
+
+  const char* dna = fq.c_str(); 
+
+
   int wordlen = ceil(len / (MAXWORD/2.0)); //number of binarywords to represent a haplotype
 
   binaryword *t, *haplotype = new binaryword[ wordlen ];
@@ -377,7 +440,6 @@ makeRecord(const char* dna, unsigned left, unsigned right, unsigned char orienta
     delete[] (haplotype);
     haplotype=hap2;
   }
-
 
 
   Report rep = {strIndex, haplotype, len};
@@ -562,7 +624,7 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 #endif
 	      
 	      if (fpMatches[i].back()  < rpMatches[i].front())
-		makeRecord(dna, fpMatches[i].front(), rpMatches[i].back(), FORWARDFLANK, i, id);
+		makeRecord(records[a], fpMatches[i].front(), rpMatches[i].back(), FORWARDFLANK, i, id);
 
 	    } else if (opt.verbose && rpMatches[i].size() < (*c)[i].reverseCount ) { // not enough matches for the second anchor
 	      ++biasCounts[id][i];
@@ -578,7 +640,7 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 #endif
 	      
 	      if (rrMatches[i].back() < frMatches[i].front() )
-		makeRecord(dna, rrMatches[i].front(), frMatches[i].back(), REVERSEFLANK, i, id);
+		makeRecord(records[a], rrMatches[i].front(), frMatches[i].back(), REVERSEFLANK, i, id);
 	      
 	    } else if (opt.verbose && frMatches[i].size() < (*c)[i].forwardCount ) {
 	      ++biasCounts[id][i]; 
@@ -661,7 +723,7 @@ parseArgs(int argc, char **argv, Options &opt) {
   opt.type=NULL;
   opt.motifDistance=0;
   opt.distance=1;
-
+  opt.labelReads=0;
 
   bool errors=0;
   
@@ -673,6 +735,8 @@ parseArgs(int argc, char **argv, Options &opt) {
 	opt.shortCircuit=1;
       } else if (argv[i][1] == 'v') {
 	opt.verbose=1;
+      } else if (argv[i][1] == 'l') {
+	opt.labelReads=1;
       } else if (argv[i][1] == 't') {
 	// filters the config file by type
 	++i;

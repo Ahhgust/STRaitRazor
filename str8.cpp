@@ -350,13 +350,17 @@ makeRecord(const char* dna, unsigned left, unsigned right, unsigned char orienta
   int wordlen = ceil(len / (MAXWORD/2.0)); //number of binarywords to represent a haplotype
   binaryword *t, *haplotype = new binaryword[ wordlen ];
   t = haplotype;
-  
+  unsigned mod = len % (MAXWORD/2);
+  unsigned numChars = MAXWORD/2;
+
   for (int i=0; i < len; i += (MAXWORD/2), ++t) {
-    *t = gatcToLong((char*)(&dna[i + left ]), MAXWORD/2);
+    if (i + left + MAXWORD/2 > right) // don't read past the end of the array
+      numChars=mod;
+
+    *t = gatcToLong((char*)(&dna[i + left ]), numChars);
   }
   
-  unsigned mod = len % (MAXWORD/2);
-  
+
   if (mod) { // is the sequence not a multple of 32?
     --t;
     *t = *t & ((binaryword)MAXBINARYWORD) << 2*((MAXWORD/2)-mod); // mask out the (right-most) character

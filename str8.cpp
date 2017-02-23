@@ -364,8 +364,8 @@ makeRecord(const char* dna, unsigned left, unsigned right, unsigned char orienta
   
   if (opt.noReverseComplement== 0 && orientation==REVERSEFLANK) {
     binaryword *hap2 = new binaryword[ wordlen ];
-    reverseComplement(haplotype, hap2, wordlen);
-    delete(haplotype);
+    reverseComplement(haplotype, hap2, len);
+    delete[] (haplotype);
     haplotype=hap2;
   }
 

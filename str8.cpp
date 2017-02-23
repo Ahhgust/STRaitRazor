@@ -128,9 +128,9 @@ Options opt; // parsed command-line options
 // variables used for IO:
 bool done=0; // whether or not the file has been consumed
 bool nextdone=0; // this is the penultimate done ; ie, whether or not the 2nd buffer exhausted the filehandle
-string MEM[ RECSINMEM ]; // buffers used for processing
-string OTHERMEM[ RECSINMEM ]; // these contain the DNA strings from the fastq file
-string *records; // pointer used to alterante between MEM and OTHERMEM
+Fastq MEM[ RECSINMEM ]; // buffers used for processing
+Fastq OTHERMEM[ RECSINMEM ]; // these contain the DNA strings from the fastq file
+Fastq *records; // pointer used to alterante between MEM and OTHERMEM
 istream *currentInputStream; //pointer to stdin / current file opened for reading. fastq format is assumed.
 
 
@@ -301,16 +301,17 @@ printReportsMT(FILE *stream) {
 
 
 bool
-buffer(string mem[]) {
+buffer(Fastq mem[]) {
 
   unsigned i=0;
-  string dummy;
 
-  while (getline(*currentInputStream, mem[i])) {
-    getline(*currentInputStream, mem[i]); // read in the DNA string
-    getline(*currentInputStream, dummy); // the +
-    getline(*currentInputStream, dummy); // the quality string (ignored)
+  while (getline(*currentInputStream, mem[i].id)) {
+    getline(*currentInputStream, mem[i].dna); // read in the DNA string
+    getline(*currentInputStream, mem[i].qual); // the + ; overwritten
+    getline(*currentInputStream, mem[i].qual); // the quality string (ignored)
+
     ++i;
+
     if (i == RECSINMEM) {
       int c = currentInputStream->peek();
       if (c == EOF) {
@@ -320,9 +321,10 @@ buffer(string mem[]) {
       return 0;
     }
   }
+
   LASTREC = i;
-  for ( ; i < RECSINMEM; ++i)
-    mem[i].clear();
+  for ( ; i < RECSINMEM; ++i) 
+    mem[i].dna.clear();
 
   return 1;
 }
@@ -344,7 +346,6 @@ buffer(string mem[]) {
 void
 makeRecord(const char* dna, unsigned left, unsigned right, unsigned char orientation, unsigned strIndex, int id) {
 
-  //  cout << "HERE!\t"  << left << "\t" << right << endl << dna << endl;
 
   int len = (int) (right - left);
   int wordlen = ceil(len / (MAXWORD/2.0)); //number of binarywords to represent a haplotype
@@ -361,13 +362,16 @@ makeRecord(const char* dna, unsigned left, unsigned right, unsigned char orienta
     --t;
     *t = *t & ((binaryword)MAXBINARYWORD) << 2*((MAXWORD/2)-mod); // mask out the (right-most) character
   }
-  
+
+
   if (opt.noReverseComplement== 0 && orientation==REVERSEFLANK) {
     binaryword *hap2 = new binaryword[ wordlen ];
-    reverseComplement(haplotype, hap2, wordlen);
-    delete(haplotype);
+    reverseComplement(haplotype, hap2, len);
+    delete[] (haplotype);
     haplotype=hap2;
   }
+
+
 
   Report rep = {strIndex, haplotype, len};
   
@@ -405,7 +409,7 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
     unsigned dnalen = records[a].length();
     if ((int)dnalen < minFrag)
           continue;
-    
+
     if ((unsigned)a >= LASTREC)
       break;
 
@@ -534,7 +538,7 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
       }
     } // done reading read
     dna = records[a].c_str(); // reset the pointer
-    
+
     if (gotOne) { // is there at least one record
       for (unsigned i = 0; i < numStrs; ++i) {
 	if (lastHitRecord[i]== (unsigned) a 

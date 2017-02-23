@@ -69,6 +69,31 @@ typedef struct {
 } Config;
 
 
+// this is a struct used to represent a single fastq record
+struct Fastq {
+  string id; // first line in fastq record
+  string dna; // the dna sequence 
+  string qual; // the quality scores
+
+  // a little snarky, but this let's me use the fastq structs just like strings (I just wanted C-strings anyways!!)
+  const char * 
+  c_str() {
+    return dna.c_str();
+  }
+
+  const char *
+  qual_c_str() {
+    return qual.c_str();
+  }
+
+  unsigned
+  length() {
+    return dna.length(); // quals and dnas are same length by definition
+  }
+
+};
+
+
 // this is how the kmers in the config file are represented
 struct Kmer {
   binaryword w; // 2-bit representation of a (up-to) 32-base DNA kmer

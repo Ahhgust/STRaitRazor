@@ -39,7 +39,10 @@ SOFTWARE.
 #ifndef NOTHREADS
 #include <pthread.h>
 #include <semaphore.h>
+#include <atomic>
 #endif
+
+
 
 #include "lookup.h"
 #include "str8.h"
@@ -63,6 +66,8 @@ struct Options {
   bool verbose;// prints out extra information
   bool help; // prints a helpful usage statement. default 0
   bool noReverseComplement; // turns of reverse-complementing markers inferred to be on the negative strand
+  bool includeAnchors; // outputs the anchor sequences themselves (note this can be misleading if the anchors are themselves primers)
+
   FILE *out; // the output file. default=stdout
   char *config; // required! This is the NAME of config file
   int numThreads; // default==1
@@ -141,8 +146,8 @@ istream *currentInputStream; //pointer to stdin / current file opened for readin
 pthread_mutex_t ioLock;
 sem_t writersLock; // the writer is blocked at this array
 
-volatile int workersWorking=0; // the number of workers processing fastq records
-volatile bool buffered=0;
+std::atomic<int> workersWorking(0); // the number of workers processing fastq records
+std::atomic<bool> buffered(0);
 #endif
 
 
@@ -623,8 +628,12 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 		" rpsize " << rpMatches[i].size() << endl;
 #endif
 	      
-	      if (fpMatches[i].back()  < rpMatches[i].front())
-		makeRecord(records[a], fpMatches[i].front(), rpMatches[i].back(), FORWARDFLANK, i, id);
+	      if (fpMatches[i].back()  < rpMatches[i].front()){
+		if (opt.includeAnchors) 
+		  makeRecord(records[a], fpMatches[i].front() - (*c)[i].forwardLength, rpMatches[i].back() + (*c)[i].reverseLength, FORWARDFLANK, i, id);
+		else
+		  makeRecord(records[a], fpMatches[i].front(), rpMatches[i].back(), FORWARDFLANK, i, id);
+	      }
 
 	    } else if (opt.verbose && rpMatches[i].size() < (*c)[i].reverseCount ) { // not enough matches for the second anchor
 	      ++biasCounts[id][i];
@@ -639,9 +648,13 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 		" rpsize " << rpMatches[i].size() << endl;
 #endif
 	      
-	      if (rrMatches[i].back() < frMatches[i].front() )
-		makeRecord(records[a], rrMatches[i].front(), frMatches[i].back(), REVERSEFLANK, i, id);
+	      if (rrMatches[i].back() < frMatches[i].front() ) {
+		if (opt.includeAnchors)
+		  makeRecord(records[a], rrMatches[i].front() - (*c)[i].reverseLength , frMatches[i].back()+(*c)[i].forwardLength, REVERSEFLANK, i, id);
+		else
+		  makeRecord(records[a], rrMatches[i].front(), frMatches[i].back(), REVERSEFLANK, i, id);
 	      
+	      }
 	    } else if (opt.verbose && frMatches[i].size() < (*c)[i].forwardCount ) {
 	      ++biasCounts[id][i]; 
 	    }
@@ -690,7 +703,9 @@ usage(char *arg0) {
   cerr << "Possible arguments:" << endl << endl << 
     "\t-h (help; causes this to be printed)" << endl <<
     "\t-n (no reverse complement-- this turns off the default behavior of reverse-complementing matches on the negative strand)" << endl <<
-    "\t-v (verbose ; prints out additional diagnostic information)" << endl << endl <<
+    "\t-v (verbose ; prints out additional diagnostic information)" << endl << 
+    "\t-l (labels reads; outputs a fastq file labeled with the STR they correspond to (line 3 in fastq record), with extra sequence (5' and 3') trimmed)" << endl <<
+    "\t-i (includes anchor sequences in the reporting process. normally the sequences *between* the anchors is returned; this includes the approximately matching anchor sequences as well)" << endl << endl <<
 
     "\t-a integer (default 1; the maximum Hamming distance used with anchor search. can only be 0, 1 or 2)" << endl <<
     "\t-m integer (default 0; the maximum Hamming distance used with motif search. can only be 0 or 1)" << endl <<
@@ -717,6 +732,8 @@ parseArgs(int argc, char **argv, Options &opt) {
   opt.shortCircuit=0;
   opt.minPrint=0;
   opt.noReverseComplement=0; 
+  opt.includeAnchors=0;
+
   opt.config=NULL;
   opt.numThreads=1;
   opt.useTrie=1;
@@ -735,6 +752,8 @@ parseArgs(int argc, char **argv, Options &opt) {
 	opt.shortCircuit=1;
       } else if (argv[i][1] == 'v') {
 	opt.verbose=1;
+      } else if (argv[i][1] == 'i') {
+	opt.includeAnchors=1;
       } else if (argv[i][1] == 'l') {
 	opt.labelReads=1;
       } else if (argv[i][1] == 't') {
@@ -850,6 +869,17 @@ parseArgs(int argc, char **argv, Options &opt) {
     errors=1;
   }
 
+  if (opt.labelReads && opt.minPrint > 0) {
+    cerr << endl << "Option -l does not (currently) work with option -f. Pick one or the other!" << endl << endl;
+    errors=1;
+  }
+
+  if (opt.labelReads && opt.numThreads > 1) {
+    cerr << endl << "Option -l can only be used with a single-thread!" << endl << endl;
+    errors=1;
+  }
+
+
   if (errors) 
     usage(argv[0]);
 
@@ -907,7 +937,7 @@ workerThread(void *arg) {
     sem_post(&writersLock); // wake up the writer thread which fills the buffer
     
 
-    workersWorking= opt.numThreads; // wake up the othe readers
+    workersWorking= opt.numThreads; // wake up the other readers
     pthread_mutex_unlock(&ioLock);  // release mutex
     goto middle;
   } else {
@@ -970,8 +1000,8 @@ main(int argc, char **argv) {
   for (i=0; i < (unsigned) opt.numThreads; ++i)
     ids[i] = i;
   
-  std::ios::sync_with_stdio(false);
-  
+  std::ios::sync_with_stdio(false);  
+
   // parse the config file
   c = parseConfig(opt.config, &numStrs, opt.type);
 

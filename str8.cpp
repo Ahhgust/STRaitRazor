@@ -39,6 +39,8 @@ SOFTWARE.
 #ifndef NOTHREADS
 #include <pthread.h>
 #include <semaphore.h>
+
+#include <atomic>
 #endif
 
 #include "lookup.h"
@@ -140,8 +142,9 @@ istream *currentInputStream; //pointer to stdin / current file opened for readin
 pthread_mutex_t ioLock;
 sem_t writersLock; // the writer is blocked at this array
 
-volatile int workersWorking=0; // the number of workers processing fastq records
-volatile bool buffered=0;
+// bugfix; was volatile.
+std::atomic<int> workersWorking(0); // the number of workers processing fastq records
+std::atomic<bool> buffered(0);
 #endif
 
 

@@ -132,8 +132,7 @@ struct CompareReport {
 Options opt; // parsed command-line options
 
 // variables used for IO:
-bool done=0; // whether or not the file has been consumed
-bool nextdone=0; // this is the penultimate done ; ie, whether or not the 2nd buffer exhausted the filehandle
+
 Fastq MEM[ RECSINMEM ]; // buffers used for processing
 Fastq OTHERMEM[ RECSINMEM ]; // these contain the DNA strings from the fastq file
 Fastq *records; // pointer used to alterante between MEM and OTHERMEM
@@ -146,8 +145,15 @@ istream *currentInputStream; //pointer to stdin / current file opened for readin
 pthread_mutex_t ioLock;
 sem_t writersLock; // the writer is blocked at this array
 
+std::atomic<bool> done(0);
+std::atomic<bool> nextdone(0);
 std::atomic<int> workersWorking(0); // the number of workers processing fastq records
 std::atomic<bool> buffered(0);
+
+#else
+
+bool done=0; // whether or not the file has been consumed
+bool nextdone=0; // this is the penultimate done ; ie, whether or not the 2nd buffer exhausted the filehandle
 #endif
 
 
@@ -933,7 +939,10 @@ workerThread(void *arg) {
       records = MEM;
 
     buffered=0; // we set buffered=0; ie, the other buffer needs to get filled
-    done = nextdone; // update done with the status of the current buffer
+    //done = nextdone; // update done with the status of the current buffer
+    if (nextdone)
+      done=true;
+
     sem_post(&writersLock); // wake up the writer thread which fills the buffer
     
 

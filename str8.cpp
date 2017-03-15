@@ -55,7 +55,8 @@ using namespace std;
 
 // the number of fastq records kept in memory (*2 ; one for each buffer in the double buffer)
 #define RECSINMEM 1000000
-unsigned LASTREC = UINT_MAX;
+
+#define OUTPUT_INIT_MEM 100
 
 
 
@@ -127,6 +128,16 @@ struct CompareReport {
 };
 
 
+struct Output {
+
+  unsigned strIndex; // which STR does this correspond to?
+  unsigned leftIndex; // substring positions
+  unsigned rightIndex;
+  bool isNegative; // reverse complement this guy?
+  
+  Fastq *f;
+  
+};
 
 
 Options opt; // parsed command-line options
@@ -138,20 +149,27 @@ Fastq OTHERMEM[ RECSINMEM ]; // these contain the DNA strings from the fastq fil
 Fastq *records; // pointer used to alterante between MEM and OTHERMEM
 istream *currentInputStream; //pointer to stdin / current file opened for reading. fastq format is assumed.
 
+vector <vector < Output > > output;
+
+
+
 
 
 // multithreading variables:
 #ifndef NOTHREADS
-pthread_mutex_t ioLock;
+pthread_mutex_t ioLock; // poorly named; this is the lock associated w/ reading data
 sem_t writersLock; // the writer is blocked at this array
+
+pthread_mutex_t outLock; // controls printing out (fastq/bam)
 
 std::atomic<bool> done(0);
 std::atomic<bool> nextdone(0);
-std::atomic<int> workersWorking(0); // the number of workers processing fastq records
+std::atomic<int> workersWorking(0); // the number of workers allowed to be processing fastq records
+std::atomic<int> startedWorking(0); // the number of workers that have started processing fastq records
 std::atomic<bool> buffered(0);
-
+std::atomic<unsigned> LASTREC(UINT_MAX);
 #else
-
+unsigned LASTREC = UINT_MAX;
 bool done=0; // whether or not the file has been consumed
 bool nextdone=0; // this is the penultimate done ; ie, whether or not the 2nd buffer exhausted the filehandle
 #endif
@@ -335,12 +353,91 @@ buffer(Fastq mem[]) {
       return 0;
     }
   }
-
   LASTREC = i;
+
   for ( ; i < RECSINMEM; ++i) 
     mem[i].dna.clear();
 
   return 1;
+}
+
+
+  // prints a single fastq record
+  // trimmed and labeled
+void
+printFastq(Output &out) {
+
+  Fastq *fq = out.f;
+  
+  if (opt.labelReads) {
+    fprintf(opt.out, "%s\n", fq->id.c_str());
+    
+    if (!out.isNegative) { // forward strand
+      for (unsigned i=out.leftIndex; i < out.rightIndex; ++i) {
+	fprintf(opt.out, "%c", fq->dna[i]);
+      }
+      fprintf(opt.out, "\n+ F ");
+      fprintf(opt.out, "%s\n", (*c)[out.strIndex].locusName.c_str());
+      for (unsigned i=out.leftIndex; i < out.rightIndex; ++i) {
+	fprintf(opt.out, "%c", fq->qual[i]);
+      }
+      fprintf(opt.out, "\n");
+    } else { // print out the reverse complement
+
+      // joy of unsigned integers;
+      // make sure that i never equals 0. otherwise bad things
+      // happen!
+      char b;
+      for (unsigned i=out.rightIndex-1; i > out.leftIndex; --i) {
+	b = fq->dna[i];
+	if (b=='T') 
+	  b = 'A';
+	else if (b == 'A')
+	  b = 'T';
+	else if (b == 'G')
+	  b = 'C';
+	else if (b == 'C')
+	  b = 'G';
+
+	fprintf(opt.out, "%c", b);
+      }
+
+      b = fq->dna[out.leftIndex];
+      if (b=='T') 
+	b = 'A';
+      else if (b == 'A')
+	b = 'T';
+      else if (b == 'G')
+	b = 'C';
+      else if (b == 'C')
+	b = 'G';
+
+      fprintf(opt.out, "%c\n+ R ", b);
+      fprintf(opt.out, "%s\n", (*c)[out.strIndex].locusName.c_str());
+
+      for (unsigned i=out.rightIndex-1; i > out.leftIndex; --i) {
+	fprintf(opt.out, "%c", fq->qual[i]);
+      }
+      fprintf(opt.out, "%c\n", fq->qual[out.leftIndex]);
+    }
+
+    return;
+  }
+
+
+}
+
+
+  // assumes that opt.labelreads is true!
+  // print out every record associated with a given thread
+// note that mutual exclusion over the print statement must be obtained first!
+void
+printAllRecordsOneThread(int threadId) {
+
+  for ( auto it = output[threadId].begin(); it != output[threadId].end(); ++it) 
+    printFastq(*it);
+  
+  output[threadId].clear();
 }
 
 
@@ -357,68 +454,45 @@ buffer(Fastq mem[]) {
   and it adds the corresponding record to the table of haplotypes
 
  */
+
 void
 makeRecord(Fastq &fq, unsigned left, unsigned right, unsigned char orientation, unsigned strIndex, int id) {
 
-
   int len = (int) (right - left);  
-  // this emits a FASTQ file, trimmed and labeled
+  
   if (opt.labelReads) {
-    fprintf(opt.out, "%s\n", fq.id.c_str());
-    
-    if (orientation==FORWARDFLANK) { // print the forward
-      for (unsigned i=left; i < right; ++i) {
-	fprintf(opt.out, "%c", fq.dna[i]);
+    Output out;
+    out.strIndex = strIndex;
+    out.leftIndex = left;
+    out.rightIndex=right;
+    if (orientation==REVERSEFLANK)
+      out.isNegative=true;
+    else
+      out.isNegative=false;
+
+    out.f = &fq;
+
+    // this is optimistic synchronization.
+    // we want to ensure that just 1 thread is printing to stdout/file at any one time
+    // thus we try and get mutual exclusion.  if we get it, then great, let's print
+    // otherwise we add it to a buffer that is unique to this thread
+    if (opt.numThreads==1) {
+      printFastq(out); // only one thread; just print out the record.
+    } else {
+      int ret = pthread_mutex_trylock(&outLock);
+      if (ret==0) { // mutual exclusion obtained!
+	if (! output[id].empty() ) // if there's other stuff to print, then print it!
+	  printAllRecordsOneThread(id);
+
+	printFastq(out); // just print out the record without appending it to the end of the vector
+	
+	pthread_mutex_unlock(&outLock);
+      } else { // some other writer is writing.
+	output[id].push_back(out); 
       }
-      fprintf(opt.out, "\n+ F ");
-      fprintf(opt.out, "%s\n", (*c)[strIndex].locusName.c_str());
-      for (unsigned i=left; i < right; ++i) {
-	fprintf(opt.out, "%c", fq.qual[i]);
-      }
-      fprintf(opt.out, "\n");
-    } else { // print out the reverse complement
-
-      // joy of unsigned integers;
-      // make sure that i never equals 0. otherwise bad things
-      // happen!
-      char b;
-      for (unsigned i=right-1; i > left; --i) {
-	b = fq.dna[i];
-	if (b=='T') 
-	  b = 'A';
-	else if (b == 'A')
-	  b = 'T';
-	else if (b == 'G')
-	  b = 'C';
-	else if (b == 'C')
-	  b = 'G';
-
-	fprintf(opt.out, "%c", b);
-      }
-
-      b = fq.dna[left];
-      if (b=='T') 
-	b = 'A';
-      else if (b == 'A')
-	b = 'T';
-      else if (b == 'G')
-	b = 'C';
-      else if (b == 'C')
-	b = 'G';
-
-      fprintf(opt.out, "%c\n+ R ", b);
-      fprintf(opt.out, "%s\n", (*c)[strIndex].locusName.c_str());
-
-      for (unsigned i=right-1; i > left; --i) {
-	fprintf(opt.out, "%c", fq.qual[i]);
-      }
-      fprintf(opt.out, "%c\n", fq.qual[left]);
     }
 
-
-    return;
   }
-
 
   const char* dna = fq.c_str(); 
 
@@ -454,13 +528,13 @@ makeRecord(Fastq &fq, unsigned left, unsigned right, unsigned char orientation, 
 
 
   Report rep = {strIndex, haplotype, len};
-  
+
   if (orientation==REVERSEFLANK) {
     ++(matches[id][rep].first);
   } else {
     ++(matches[id][rep].second);
   }
-  
+
   if (opt.verbose) {
     ++totalCounts[id][strIndex];
     leftFlankPosSum[id][strIndex] += left;
@@ -485,6 +559,7 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
   // valid means after a forwardflank or reverseflank_rc (the flanks may not be paired)
 
   for (a=id ; a < RECSINMEM; a += opt.numThreads) {
+
     const char *dna = records[a].c_str(); // ascii representation of DNA string
     unsigned dnalen = records[a].length();
     if ((int)dnalen < minFrag)
@@ -691,8 +766,10 @@ findMatchesOneThread() {
   while (!done) {
     done = buffer(MEM);
     processDNA_Trie(0, matchIds, matchTypes);
+    if (opt.labelReads)
+      printAllRecordsOneThread(0);
   }
-    
+  
   delete [] matchIds;
   delete [] matchTypes;
 
@@ -880,11 +957,12 @@ parseArgs(int argc, char **argv, Options &opt) {
     errors=1;
   }
 
+  /*
   if (opt.labelReads && opt.numThreads > 1) {
     cerr << endl << "Option -l can only be used with a single-thread!" << endl << endl;
     errors=1;
   }
-
+  */
 
   if (errors) 
     usage(argv[0]);
@@ -910,8 +988,11 @@ workerThread(void *arg) {
   while (workersWorking < opt.numThreads) 
     ;
 
+
+
  middle:
 
+  startedWorking++; // atomic operation.
   processDNA_Trie(id, matchIds, matchTypes);
 
   if (done) {
@@ -923,6 +1004,10 @@ workerThread(void *arg) {
 
     return NULL;
   }
+
+  while (startedWorking < opt.numThreads)
+    ;
+
   pthread_mutex_lock(&ioLock);
 
   --workersWorking;
@@ -938,6 +1023,7 @@ workerThread(void *arg) {
     else
       records = MEM;
 
+    startedWorking=0;
     buffered=0; // we set buffered=0; ie, the other buffer needs to get filled
     //done = nextdone; // update done with the status of the current buffer
     if (nextdone)
@@ -948,9 +1034,23 @@ workerThread(void *arg) {
 
     workersWorking= opt.numThreads; // wake up the other readers
     pthread_mutex_unlock(&ioLock);  // release mutex
+
+    if (opt.labelReads && ! output[id].empty() ) { // this thread still has printing to do!
+      pthread_mutex_lock(&outLock);
+      printAllRecordsOneThread(id);
+      pthread_mutex_unlock(&outLock);
+    }
+
     goto middle;
   } else {
     pthread_mutex_unlock(&ioLock);
+
+    if (opt.labelReads && ! output[id].empty() ) { // this thread still has printing to do!
+      pthread_mutex_lock(&outLock);
+      printAllRecordsOneThread(id);
+      pthread_mutex_unlock(&outLock);
+    }
+
     goto top;
   }
 
@@ -973,7 +1073,6 @@ writerThread(void *arg) {
 
     buffered=1; // the double buffer is set up 
     sem_wait(&writersLock); // wait for the readers to finish reading *records
-
     
   }
 
@@ -1003,13 +1102,14 @@ main(int argc, char **argv) {
   
   ids = new int [ opt.numThreads];
   matches = new Matches[ opt.numThreads ]; // each thread records the records it found
-
+  output.resize( opt.numThreads); // as well as the fastq/bam record associated with a given read
   
-  
-  for (i=0; i < (unsigned) opt.numThreads; ++i)
+  for (i=0; i < (unsigned) opt.numThreads; ++i) {
     ids[i] = i;
-  
-  std::ios::sync_with_stdio(false);  
+    output[i].reserve( OUTPUT_INIT_MEM );
+  }
+
+  // std::ios::sync_with_stdio(false);  
 
   // parse the config file
   c = parseConfig(opt.config, &numStrs, opt.type);
@@ -1068,8 +1168,15 @@ main(int argc, char **argv) {
 
 #ifndef NOTHREADS
   if (opt.numThreads > 1) {
-    pthread_mutex_init(&ioLock, 0);
-    sem_init(&writersLock, 0, 0);
+    if (pthread_mutex_init(&ioLock, 0)
+	||
+	pthread_mutex_init(&outLock, 0)
+	||
+	sem_init(&writersLock, 0, 0)	
+	) {
+      cerr << "Failed to create locks!!" << endl;
+      return 1;
+    }
   }
 #endif
 
@@ -1126,10 +1233,11 @@ main(int argc, char **argv) {
   // if no fastq files are given then check stdin
   if (argc == start)  {
     currentInputStream = &cin;
-    if (opt.numThreads < 2) 
+    if (opt.numThreads < 2) {
+
       findMatchesOneThread( );
 
-    else {
+    } else {
 #ifndef NOTHREADS
       int err;
       pthread_t t;
@@ -1141,7 +1249,7 @@ main(int argc, char **argv) {
 	exit(EXIT_FAILURE);
       }
       threads.push_back(t);
-      
+
       for (int j=0; j < opt.numThreads; ++j) {
 	err = pthread_create(&t, NULL, workerThread, (void*) &ids[j] ); 
 	if (err) {
@@ -1165,10 +1273,15 @@ main(int argc, char **argv) {
 
   }
 
+  for (int j=0; j < opt.numThreads; ++j)
+    if (! output[j].empty() )
+      printAllRecordsOneThread(j);
 
 #ifndef NOTHREADS
   if (opt.numThreads > 1) {
+
     pthread_mutex_destroy(&ioLock);
+    pthread_mutex_destroy(&outLock);
     sem_destroy(&writersLock);
   }
 #endif
@@ -1178,7 +1291,6 @@ main(int argc, char **argv) {
 
   // optionally can free memory here...
   // delete ids;
-
   return 0;
 }
 

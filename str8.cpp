@@ -145,6 +145,7 @@ sem_t writersLock; // the writer is blocked at this array
 // bugfix; was volatile.
 std::atomic<int> workersWorking(0); // the number of workers processing fastq records
 std::atomic<bool> buffered(0);
+std::atomic<int> startedWorking(0);
 #endif
 
 
@@ -807,7 +808,8 @@ workerThread(void *arg) {
     ;
 
  middle:
-
+  
+  ++startedWorking;
   processDNA_Trie(id, matchIds, matchTypes);
 
   if (done) {
@@ -819,6 +821,10 @@ workerThread(void *arg) {
 
     return NULL;
   }
+
+  while (startedWorking < opt.numThreads)
+    ;
+
   pthread_mutex_lock(&ioLock);
 
   --workersWorking;
@@ -828,6 +834,8 @@ workerThread(void *arg) {
 
     while (! buffered) // ensure that the other buffer is filled... 
       ; // ie, wait for buffered=1 assignment
+
+    startedWorking=0;
 
     if (records==MEM)
       records = OTHERMEM;

@@ -49,7 +49,7 @@ SOFTWARE.
 #include "trie.h"
 
 // version of strait razor!
-const float VERSION_NUM = 3.0;
+const char* VERSION_NUM = "3.01";
 
 using namespace std;
 
@@ -58,6 +58,9 @@ using namespace std;
 
 #define OUTPUT_INIT_MEM 100
 
+
+// default filename for the report file (if fastq/bam output is requested)
+const char* reportFilename = "allsequences.txt";
 
 
 // for the command-line options
@@ -69,13 +72,15 @@ struct Options {
   bool noReverseComplement; // turns of reverse-complementing markers inferred to be on the negative strand
   bool includeAnchors; // outputs the anchor sequences themselves (note this can be misleading if the anchors are themselves primers)
 
+  FILE *reportOut; // file handle for print the reports. defaults to standard out iff 
+  // the we also aren't reporting bam/fastq
+
   FILE *out; // the output file. default=stdout
   char *config; // required! This is the NAME of config file
   int numThreads; // default==1
   unsigned char mode; // search style
   unsigned char distance; // hamming distance; used with anchors
   unsigned char motifDistance; // hamming distance ; used with motifs
-  bool useTrie; // defunct; always 1
   char *type;// default: NULL can constrain the config file to be just AUTOSOMES (filters on type in the config file)
   bool labelReads; // default 0; outputs a fastq, only of reads for loci that we want trimmed to just those loci
 };
@@ -227,9 +232,6 @@ sortKeyAndValue(pair<Report, pair<unsigned, unsigned> > first, pair<Report, pair
 
 void
 printReports(FILE *stream, map< Report, pair <unsigned, unsigned>, CompareReport> &hash, unsigned minCount, bool noRC) {
-
-  if (opt.labelReads)
-    return;
 
   vector< pair<Report, pair<unsigned, unsigned> > > vec(hash.begin(), hash.end() );
   sort( vec.begin(), vec.end() , sortKeyAndValue);
@@ -721,7 +723,7 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 	    }
 	    // negative strand match
 	  } 
-	  if ( rrMatches[i].size() == (*c)[i].reverseCount) {
+z	  if ( rrMatches[i].size() == (*c)[i].reverseCount) {
 	    if ( frMatches[i].size() == (*c)[i].forwardCount ) {
 	      
 #if DEBUG
@@ -773,7 +775,7 @@ findMatchesOneThread() {
   delete [] matchIds;
   delete [] matchTypes;
 
-  printReports(opt.out, matches[0], opt.minPrint,opt.noReverseComplement);
+  printReports(opt.reportOut, matches[0], opt.minPrint,opt.noReverseComplement);
 }
 
 
@@ -810,6 +812,8 @@ parseArgs(int argc, char **argv, Options &opt) {
 
   // defaults
   opt.out = stdout;
+  opt.reportOut = stdout;
+
   opt.verbose=0;
   opt.help=0;
   opt.shortCircuit=0;
@@ -819,7 +823,6 @@ parseArgs(int argc, char **argv, Options &opt) {
 
   opt.config=NULL;
   opt.numThreads=1;
-  opt.useTrie=1;
   opt.type=NULL;
   opt.motifDistance=0;
   opt.distance=1;
@@ -837,8 +840,14 @@ parseArgs(int argc, char **argv, Options &opt) {
 	opt.verbose=1;
       } else if (argv[i][1] == 'i') {
 	opt.includeAnchors=1;
-      } else if (argv[i][1] == 'l') {
+      } else if (argv[i][1] == 'l') { // if we're printing fastq
 	opt.labelReads=1;
+	opt.reportOut = fopen(reportFilename, "w");
+	if (opt.reportOut==NULL) {
+	  fprintf(stderr, "Failed to open report file: %s for writing!\n", reportFilename);
+	  exit(1);
+	}
+
       } else if (argv[i][1] == 't') {
 	// filters the config file by type
 	++i;
@@ -856,6 +865,10 @@ parseArgs(int argc, char **argv, Options &opt) {
 	} else {
 	  ++i;
 	  opt.out = fopen(argv[i], "w");
+	  if (opt.out==NULL) {
+	    fprintf(stderr, "Failed to open %s for writing!\n", argv[i]);
+	    exit(1);
+	  }
 	}
       } else if (argv[i][1] == 'f') { // setting min records to print
 	if (i == argc-1) {
@@ -997,10 +1010,8 @@ workerThread(void *arg) {
 
   if (done) {
 
-    if (opt.useTrie) {
-      delete [] matchIds;
-      delete [] matchTypes;
-    }
+    delete [] matchIds;
+    delete [] matchTypes;
 
     return NULL;
   }
@@ -1221,7 +1232,7 @@ main(int argc, char **argv) {
 
       threads.clear();
       std::ios::sync_with_stdio(true);
-      printReportsMT(opt.out);
+      printReportsMT(opt.reportOut);
       std::ios::sync_with_stdio(false);
 #endif
 
@@ -1265,7 +1276,7 @@ main(int argc, char **argv) {
 
       threads.clear();
       std::ios::sync_with_stdio(true);
-      printReportsMT(opt.out);
+      printReportsMT(opt.reportOut);
       std::ios::sync_with_stdio(false);
 #endif
 

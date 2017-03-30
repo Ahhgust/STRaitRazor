@@ -43,6 +43,16 @@ SOFTWARE.
 #endif
 
 
+#ifdef SEQLIB
+#include "SeqLib/BamWriter.h"
+#include "SeqLib/BWAWrapper.h"
+#include "SeqLib/FermiAssembler.h"
+#include "SeqLib/UnalignedSequence.h"
+#include "SeqLib/SeqPlot.h"
+#include "SeqLib/GenomicRegion.h"
+#endif
+
+
 
 #include "lookup.h"
 #include "str8.h"
@@ -54,13 +64,29 @@ const char* VERSION_NUM = "3.01";
 using namespace std;
 
 // the number of fastq records kept in memory (*2 ; one for each buffer in the double buffer)
-#define RECSINMEM 1000000
+#define RECSINMEM 100000
 
 #define OUTPUT_INIT_MEM 100
 
 
 // default filename for the report file (if fastq/bam output is requested)
 const char* reportFilename = "allsequences.txt";
+// default filename for bam file
+string bamFilename = "out.bam";
+
+
+#ifdef SEQLIB
+using namespace SeqLib;
+
+// globals used for read mapping.
+BWAWrapper bwa;
+BamWriter bamWriter( SeqLib::BAM );
+
+#endif
+
+char *referenceGenome=NULL;
+
+
 
 
 // for the command-line options
@@ -82,7 +108,7 @@ struct Options {
   unsigned char distance; // hamming distance; used with anchors
   unsigned char motifDistance; // hamming distance ; used with motifs
   char *type;// default: NULL can constrain the config file to be just AUTOSOMES (filters on type in the config file)
-  bool labelReads; // default 0; outputs a fastq, only of reads for loci that we want trimmed to just those loci
+  unsigned char labelReads; // default 0; outputs a fastq iff set to 1, only of reads for loci that we want trimmed to just those loci ; outputs bam iff set to 2. same requirements as fastq but must also align
 };
 
 
@@ -141,6 +167,10 @@ struct Output {
   bool isNegative; // reverse complement this guy?
   
   Fastq *f;
+
+#ifdef SEQLIB
+  Report rep;
+#endif
   
 };
 
@@ -166,6 +196,7 @@ pthread_mutex_t ioLock; // poorly named; this is the lock associated w/ reading 
 sem_t writersLock; // the writer is blocked at this array
 
 pthread_mutex_t outLock; // controls printing out (fastq/bam)
+pthread_mutex_t bamLock; // lock controlling cache of bam records
 
 std::atomic<bool> done(0);
 std::atomic<bool> nextdone(0);
@@ -203,6 +234,12 @@ unsigned long **rightFlankPosSum; // the position (sum) of the right-hand positi
 typedef map<Report, pair<unsigned, unsigned>, CompareReport> Matches;
 Matches *matches;
 
+#ifdef SEQLIB
+
+typedef map<Report, BamRecord, CompareReport> BamMatches;
+BamMatches *bamMatches;
+
+#endif
 
 
 // I need to sort reports by both the key, and within equivalent keys, by value.
@@ -430,17 +467,115 @@ printFastq(Output &out) {
 }
 
 
-  // assumes that opt.labelreads is true!
-  // print out every record associated with a given thread
+void
+printBam(Output &out, int threadId) {
+#ifdef SEQLIB  
+  BamRecord &bammy = bamMatches[threadId][out.rep]; 
+  if (! bammy.isEmpty() ) {
+    Fastq *f = out.f;
+    
+    bammy.SetQualities(f->qual.substr( out.leftIndex, out.rightIndex-out.leftIndex ) , 0);
+    bammy.SetQname(f->id);
+
+    bamWriter.WriteRecord(bammy);
+  }
+#endif
+}
+
+
+
+// assumes that opt.labelreads is true!
+// print out every record associated with a given thread
 // note that mutual exclusion over the print statement must be obtained first!
 void
 printAllRecordsOneThread(int threadId) {
 
-  for ( auto it = output[threadId].begin(); it != output[threadId].end(); ++it) 
-    printFastq(*it);
+  for ( auto it = output[threadId].begin(); it != output[threadId].end(); ++it) {
+    if (opt.labelReads==WRITE_FASTQ) {
+      printFastq(*it);
+    } else if (opt.labelReads==WRITE_BAM) {
+      printBam(*it, threadId);
+    }
   
+  }
   output[threadId].clear();
 }
+
+#ifdef SEQLIB
+
+
+// this implements read mapping with a singleton design pattern
+// after it's called, bamMatches[id][rep] will have a defined (but possible empty) bam record
+// and this record will exist both in the shared cache (bamMatches[ opt.numThreads]) and in the local cache
+// (bamMatches[ id ]);
+
+
+inline void
+initBamRecord(Output &out, int id) {
+
+  Report &rep = out.rep;
+
+  // not in your cache
+  if (bamMatches[id].count(rep)==0) {
+
+    if (opt.numThreads > 1)
+      pthread_mutex_lock(&bamLock);
+
+    if (opt.numThreads > 1 &&
+	bamMatches[opt.numThreads].count(rep)==1) { // some other thread has mapped this haplotype and put it in the shared cache
+
+      bamMatches[id][rep] = bamMatches[opt.numThreads][rep];
+      pthread_mutex_unlock(&bamLock);
+
+    } else { // map the read!
+
+      if (opt.numThreads > 1)
+	pthread_mutex_unlock(&bamLock); // don't need mutual exclusion for read mapping
+
+
+      BamRecord bammy; // empty bam record
+      Fastq *f = out.f;
+      BamRecordVector results;
+      if (out.isNegative) { // matches on negative strand
+	string s;
+	int i = out.leftIndex;
+	int j = out.rightIndex-1;
+	// reverse complement. 
+	for ( ; i < out.rightIndex; ++i, --j) {
+	  char c = f->dna.at(j);
+	  if (c=='A') {
+	    c = 'T';
+	  } else if (c=='G') {
+	    c = 'C';
+	  } else if (c=='C') {
+	    c = 'G';
+	  } else {
+	    c = 'A';
+	  }
+	  s.push_back(c);
+	}
+	bwa.AlignSequence(s, f->id, results, false, 0.9, 0);
+      } else {
+	bwa.AlignSequence(f->dna.substr(out.leftIndex, out.rightIndex - out.leftIndex), f->id, results, false, 0.9, 0);
+      }
+
+      if (!results.empty() ) {
+	bammy = results.front();
+      }
+
+
+      if (opt.numThreads > 1) { // now that read mapping has been done.
+	pthread_mutex_lock(&bamLock);    
+	bamMatches[opt.numThreads][rep] = bammy; // update shared cache
+	pthread_mutex_unlock(&bamLock); 
+      }
+
+      bamMatches[id][rep] = bammy; // update your cache
+    }
+  }
+  
+}
+#endif
 
 
 /*
@@ -462,40 +597,6 @@ makeRecord(Fastq &fq, unsigned left, unsigned right, unsigned char orientation, 
 
   int len = (int) (right - left);  
   
-  if (opt.labelReads) {
-    Output out;
-    out.strIndex = strIndex;
-    out.leftIndex = left;
-    out.rightIndex=right;
-    if (orientation==REVERSEFLANK)
-      out.isNegative=true;
-    else
-      out.isNegative=false;
-
-    out.f = &fq;
-
-    // this is optimistic synchronization.
-    // we want to ensure that just 1 thread is printing to stdout/file at any one time
-    // thus we try and get mutual exclusion.  if we get it, then great, let's print
-    // otherwise we add it to a buffer that is unique to this thread
-    if (opt.numThreads==1) {
-      printFastq(out); // only one thread; just print out the record.
-    } else {
-      int ret = pthread_mutex_trylock(&outLock);
-      if (ret==0) { // mutual exclusion obtained!
-	if (! output[id].empty() ) // if there's other stuff to print, then print it!
-	  printAllRecordsOneThread(id);
-
-	printFastq(out); // just print out the record without appending it to the end of the vector
-	
-	pthread_mutex_unlock(&outLock);
-      } else { // some other writer is writing.
-	output[id].push_back(out); 
-      }
-    }
-
-  }
-
   const char* dna = fq.c_str(); 
 
 
@@ -521,6 +622,7 @@ makeRecord(Fastq &fq, unsigned left, unsigned right, unsigned char orientation, 
   }
 
 
+  // reverse complementing for the allsequences.txt file
   if (opt.noReverseComplement== 0 && orientation==REVERSEFLANK) {
     binaryword *hap2 = new binaryword[ wordlen ];
     reverseComplement(haplotype, hap2, len);
@@ -542,6 +644,61 @@ makeRecord(Fastq &fq, unsigned left, unsigned right, unsigned char orientation, 
     leftFlankPosSum[id][strIndex] += left;
     rightFlankPosSum[id][strIndex] += right;
   }
+
+  // writing fastq or bam
+  if (opt.labelReads> 0) {
+    Output out;
+    out.strIndex = strIndex;
+    out.leftIndex = left;
+    out.rightIndex=right;
+    if (orientation==REVERSEFLANK)
+      out.isNegative=true;
+    else
+      out.isNegative=false;
+
+    out.f = &fq;
+
+#ifdef SEQLIB
+    if (opt.labelReads == WRITE_BAM) {
+      out.rep = rep; // this is the key for the bam record (bamMatches[id][rep]
+      initBamRecord(out, id); // do read mapping (singleton design pattern, keyed off of rep)
+    }
+#endif
+
+    // this is optimistic synchronization.
+    // we want to ensure that just 1 thread is printing to stdout/file at any one time
+    // thus we try and get mutual exclusion.  if we get it, then great, let's print
+    // otherwise we add it to a buffer that is unique to this thread
+    if (opt.numThreads==1) {
+      if (opt.labelReads==WRITE_FASTQ) {
+	printFastq(out); // only one thread; just print out the record.
+      } else {
+	printBam(out, 0);
+      }
+
+    } else {
+#ifndef NOTHREADS
+      int ret = pthread_mutex_trylock(&outLock);
+      if (ret==0) { // mutual exclusion obtained!
+	if (! output[id].empty() ) // if there's other stuff to print, then print it!
+	  printAllRecordsOneThread(id);
+	if (opt.labelReads==WRITE_FASTQ) {
+	  printFastq(out); // just print out the record without appending it to the end of the vector
+	} else {
+	  printBam(out, id);
+	}
+
+	pthread_mutex_unlock(&outLock);
+
+      } else { // some other writer is writing.
+	output[id].push_back(out); 
+      }
+#endif
+    }
+
+  }
+
+
 
 
 }
@@ -723,7 +880,7 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 	    }
 	    // negative strand match
 	  } 
-z	  if ( rrMatches[i].size() == (*c)[i].reverseCount) {
+	  if ( rrMatches[i].size() == (*c)[i].reverseCount) {
 	    if ( frMatches[i].size() == (*c)[i].forwardCount ) {
 	      
 #if DEBUG
@@ -768,7 +925,7 @@ findMatchesOneThread() {
   while (!done) {
     done = buffer(MEM);
     processDNA_Trie(0, matchIds, matchTypes);
-    if (opt.labelReads)
+    if (opt.labelReads>0)
       printAllRecordsOneThread(0);
   }
   
@@ -798,7 +955,9 @@ usage(char *arg0) {
     "\t-p integer (The number of processors/cpus used)" << endl <<
     "\t-t filter (This filters on Type, e.g. AUTOSOMES; ie, it restricts the output to STRs that have the same type as specified in column 2 of the config file)" << endl <<
     "\t-o filename (This writes the output to filename, as opposed to standard out)" << endl <<
+    "\t-r reference (This writes the output in bam format, mapped to the reference genome)" << endl <<
     "\t-f integer (Min match; this causes haplotypes with less than f occurences to be omitted from the final output file" << endl << endl;
+
   exit(EXIT_FAILURE);
 }
 
@@ -841,7 +1000,7 @@ parseArgs(int argc, char **argv, Options &opt) {
       } else if (argv[i][1] == 'i') {
 	opt.includeAnchors=1;
       } else if (argv[i][1] == 'l') { // if we're printing fastq
-	opt.labelReads=1;
+	opt.labelReads=WRITE_FASTQ;
 	opt.reportOut = fopen(reportFilename, "w");
 	if (opt.reportOut==NULL) {
 	  fprintf(stderr, "Failed to open report file: %s for writing!\n", reportFilename);
@@ -854,7 +1013,7 @@ parseArgs(int argc, char **argv, Options &opt) {
 	opt.type = argv[i];
 	if (opt.type==NULL) {
 	  cerr << "Oops. -t flag requires a type!" << endl;
-	  ++errors;
+	  errors=1;
 	}
       } else if (argv[i][1] == 'n') {
 	opt.noReverseComplement=1; 
@@ -948,6 +1107,22 @@ parseArgs(int argc, char **argv, Options &opt) {
 	  ++i;
 	  opt.config = argv[i];
 	}
+      } else if (argv[i][1] == 'r') { // this config file
+	if (i == argc-1) {
+	  cerr << endl<< "Option -r requires a file; the reference genome file" << endl << endl;
+	  errors=1;
+	} else {
+	  ++i;
+	  referenceGenome = argv[i];
+	}
+      } else if (argv[i][1] == 'b') { // bam filename
+	if (i == argc-1) {
+	  cerr << endl<< "Option -b requires a file; the name of the bam file" << endl << endl;
+	  errors=1;
+	} else {
+	  ++i;
+	  bamFilename = (const char*) argv[i];
+	}
       } else if (argv[i][1] == '-') { // unix convention; force the end of flags
 	break;
       } else {
@@ -965,20 +1140,26 @@ parseArgs(int argc, char **argv, Options &opt) {
     errors=1;
   }
 
-  if (opt.labelReads && opt.minPrint > 0) {
-    cerr << endl << "Option -l does not (currently) work with option -f. Pick one or the other!" << endl << endl;
+  if (opt.labelReads==WRITE_FASTQ && referenceGenome != NULL) {
+    cerr << endl << "Option -l does not (currently) work with option -r." << endl
+	 << "This program can either produce bam files or fastq files, not both at the same time!" << endl;
     errors=1;
   }
 
-  /*
-  if (opt.labelReads && opt.numThreads > 1) {
-    cerr << endl << "Option -l can only be used with a single-thread!" << endl << endl;
-    errors=1;
-  }
-  */
 
   if (errors) 
     usage(argv[0]);
+
+
+  if (referenceGenome != NULL) {
+    opt.labelReads=WRITE_BAM;
+    opt.reportOut = fopen(reportFilename, "w");
+    if (opt.reportOut==NULL) {
+      fprintf(stderr, "Failed to open report file: %s for writing!\n", reportFilename);
+      exit(1);
+    }
+  }
+
 
   return i;
 }
@@ -1093,6 +1274,23 @@ writerThread(void *arg) {
 
 #endif
 
+#ifdef SEQLIB
+void
+loadRefGenome() {
+  cerr << "Loading reference genome" << endl;
+  string ref(referenceGenome);
+  bwa.LoadIndex(ref);
+  cerr << "Loading complete" << endl;
+
+  // try some ad-hoc penalties that may be appropriate for STRS
+  bwa.SetGapOpen(4);
+  bwa.SetGapExtension(1);
+  bwa.Set3primeClippingPenalty(1000);
+  bwa.Set5primeClippingPenalty(1000);  
+
+}
+#endif
+
 
 int
 main(int argc, char **argv) {
@@ -1114,13 +1312,17 @@ main(int argc, char **argv) {
   ids = new int [ opt.numThreads];
   matches = new Matches[ opt.numThreads ]; // each thread records the records it found
   output.resize( opt.numThreads); // as well as the fastq/bam record associated with a given read
-  
+#ifdef SEQLIB
+  // cache for the alignment records for a given haplotype
+  bamMatches = new BamMatches[ opt.numThreads + 1]; // BamMatches[ opt.numThreads] is a map shared by all threads
+#endif
+
   for (i=0; i < (unsigned) opt.numThreads; ++i) {
     ids[i] = i;
     output[i].reserve( OUTPUT_INIT_MEM );
   }
 
-  // std::ios::sync_with_stdio(false);  
+  std::ios::sync_with_stdio(false);  
 
   // parse the config file
   c = parseConfig(opt.config, &numStrs, opt.type);
@@ -1183,6 +1385,8 @@ main(int argc, char **argv) {
 	||
 	pthread_mutex_init(&outLock, 0)
 	||
+	pthread_mutex_init(&bamLock, 0)
+	||
 	sem_init(&writersLock, 0, 0)	
 	) {
       cerr << "Failed to create locks!!" << endl;
@@ -1191,6 +1395,15 @@ main(int argc, char **argv) {
   }
 #endif
 
+#ifdef SEQLIB
+  //TODO: run in background
+  if (opt.labelReads==WRITE_BAM) {
+    loadRefGenome();
+    bamWriter.Open( bamFilename);
+    bamWriter.SetHeader(  bwa.HeaderFromIndex() );
+    bamWriter.WriteHeader();
+  }
+#endif
   
   for (i=start ; i < (unsigned)argc; ++i) {
     ifstream in;
@@ -1231,9 +1444,7 @@ main(int argc, char **argv) {
       }
 
       threads.clear();
-      std::ios::sync_with_stdio(true);
       printReportsMT(opt.reportOut);
-      std::ios::sync_with_stdio(false);
 #endif
 
     }
@@ -1275,9 +1486,7 @@ main(int argc, char **argv) {
       }
 
       threads.clear();
-      std::ios::sync_with_stdio(true);
       printReportsMT(opt.reportOut);
-      std::ios::sync_with_stdio(false);
 #endif
 
     }
@@ -1293,9 +1502,13 @@ main(int argc, char **argv) {
 
     pthread_mutex_destroy(&ioLock);
     pthread_mutex_destroy(&outLock);
+    pthread_mutex_destroy(&bamLock);
     sem_destroy(&writersLock);
   }
 #endif
+
+  if (opt.out != opt.reportOut)
+    fclose(opt.reportOut);
 
   // let's close our file handles, shall we?
   fclose(opt.out);

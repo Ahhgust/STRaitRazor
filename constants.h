@@ -120,4 +120,10 @@ struct Kmer {
 #define MOTIF 4
 #define MOTIF_RC 5
 
+// for use with the struct Options: output formats
+#define WRITE_FASTQ 1
+// these are mutually exclusive for now.
+#define WRITE_BAM 2 
+// note that the value 0 is reserved for neither one!
+
 #endif

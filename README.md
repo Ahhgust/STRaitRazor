@@ -15,9 +15,11 @@ To use multithreading (not default; using 8 processors in this example), type:
 
 	str8 -p 8 -c configFile fastqfile > allsequences.txt
 
-(Note that on linux/mac systems, if . is not in your PATH you need to type: 
+Note that on linux/mac systems, if . is not in your PATH you need to type: 
 
-      ./str8 … instead of str8). 
+      ./str8 … 
+
+instead of str8. 
 
 Code requirements:
 The included source code

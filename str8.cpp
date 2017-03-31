@@ -53,7 +53,7 @@ const float VERSION_NUM = 3.0;
 using namespace std;
 
 // the number of fastq records kept in memory (*2 ; one for each buffer in the double buffer)
-#define RECSINMEM 1000000
+#define RECSINMEM 50000
 unsigned LASTREC = UINT_MAX;
 
 
@@ -428,7 +428,7 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
       }
 
 
-      // if we dont' have a single match (forwward or reverse complement of reverse
+      // if we dont' have a single match (forward or reverse complement of reverse
       // and there isn't enough sequence to get the smallest possible fragment out, then we're done
       if (! gotOne &&
 	  dnalen - j < (unsigned)minFrag)
@@ -442,7 +442,7 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 	unsigned char orientation = matchTypes[n];
 
 
-#if 0
+#if DEBUG
 	if (orientation < MOTIF) 
 	  cerr << "Read offset: " << j << " read # " << 
 	    a << " Str index " << strIndex << " Orientation " << (unsigned)orientation << endl;
@@ -547,19 +547,22 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
       for (unsigned i = 0; i < numStrs; ++i) {
 	if (lastHitRecord[i]== (unsigned) a 
 	    && validMotif[i]
-	    && (fpMatches[i].size() == 0 || rrMatches[i].size()==0) // ensure that the STR is only appearing once, and once in the proper orientation
 	    ) { // this STR was found for this read
 	  // positive strand match
 	  if (fpMatches[i].size() == (*c)[i].forwardCount) {
 	    if (rpMatches[i].size() == (*c)[i].reverseCount ) {
-	      
+	      // ensure that if it matches once on the positive strand, it doesn't also match on the negative strand (that both if statements below cannot be true)
+	      if ( rrMatches[i].size() != (*c)[i].reverseCount  ||
+		   frMatches[i].size() != (*c)[i].forwardCount ) {
+
 #if DEBUG
-	      cerr << c->at(i).locusName << " STR on forward strand " << i << " fpsize " << fpMatches[i].size() <<
-		" rpsize " << rpMatches[i].size() << endl;
+		cerr << c->at(i).locusName << " STR on forward strand " << i << " fpsize " << fpMatches[i].size() <<
+		  " rpsize " << rpMatches[i].size() << endl;
 #endif
 	      
-	      if (fpMatches[i].back()  < rpMatches[i].front())
-		makeRecord(dna, fpMatches[i].front(), rpMatches[i].back(), FORWARDFLANK, i, id);
+		if (fpMatches[i].back()  < rpMatches[i].front())
+		  makeRecord(dna, fpMatches[i].front(), rpMatches[i].back(), FORWARDFLANK, i, id);
+	      }
 
 	    } else if (opt.verbose && rpMatches[i].size() < (*c)[i].reverseCount ) { // not enough matches for the second anchor
 	      ++biasCounts[id][i];
@@ -676,7 +679,7 @@ parseArgs(int argc, char **argv, Options &opt) {
 	opt.type = argv[i];
 	if (opt.type==NULL) {
 	  cerr << "Oops. -t flag requires a type!" << endl;
-	  ++errors;
+	  errors=1;
 	}
       } else if (argv[i][1] == 'n') {
 	opt.noReverseComplement=1; 

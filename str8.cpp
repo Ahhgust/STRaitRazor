@@ -399,7 +399,6 @@ void
 processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 
 
-  
   int a;
   vector< vector<unsigned> > fpMatches( numStrs, vector<unsigned>(10) ); // forwardflank, positive strand
   vector< vector<unsigned> > rpMatches( numStrs, vector<unsigned>(10) ); // reverse flank, positive strand 
@@ -417,6 +416,7 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 
     //    if ((unsigned)a >= LASTREC) // creates a race condition!
     //      break;
+
 
     if ((int)dnalen < minFrag)
       continue;    
@@ -856,8 +856,9 @@ workerThread(void *arg) {
     if (nextdone)
       done = true; // update done with the status of the current buffer
 
-    sem_post(&writersLock); // wake up the writer thread which fills the buffer
-    
+    if (sem_post(&writersLock)) { // wake up the writer thread which fills the buffer
+      cerr << "Error waking up writer\n";
+    }
 
     workersWorking= opt.numThreads; // wake up the othe readers
     pthread_mutex_unlock(&ioLock);  // release mutex
@@ -872,6 +873,7 @@ workerThread(void *arg) {
 
 void *
 writerThread(void *arg) {
+  
   done=buffer(MEM); // read in a bunch of data
   if (done)
     nextdone = true;
@@ -879,7 +881,9 @@ writerThread(void *arg) {
   records = MEM; // set up the pointer
   workersWorking= opt.numThreads; // let the workers start processing the data
 
+  unsigned i=0;
   while (! nextdone) {
+    ++i;
 
     if (records == MEM) 
       nextdone=buffer(OTHERMEM);
@@ -888,11 +892,13 @@ writerThread(void *arg) {
 
     buffered=1; // the double buffer is set up
 
-    if (! nextdone)
+    if (nextdone) {
       break; // no sense waiting...
+    }
+
 
     sem_wait(&writersLock); // wait for the readers to finish reading *records
-    
+
   }
 
   return NULL;
@@ -915,7 +921,6 @@ main(int argc, char **argv) {
 
   if (opt.numThreads == 0)
     opt.numThreads=1;
-  
   
   int *ids;
   
@@ -1049,6 +1054,7 @@ main(int argc, char **argv) {
 
   // if no fastq files are given then check stdin
   if (argc == start)  {
+
     currentInputStream = &cin;
     if (opt.numThreads < 2) 
       findMatchesOneThread( );

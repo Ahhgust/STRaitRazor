@@ -53,7 +53,7 @@ const float VERSION_NUM = 3.0;
 using namespace std;
 
 // the number of fastq records kept in memory (*2 ; one for each buffer in the double buffer)
-#define RECSINMEM 1000
+#define RECSINMEM 50000
 unsigned LASTREC = UINT_MAX;
 
 

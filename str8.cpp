@@ -53,7 +53,7 @@ const float VERSION_NUM = 3.0;
 using namespace std;
 
 // the number of fastq records kept in memory (*2 ; one for each buffer in the double buffer)
-#define RECSINMEM 50000
+#define RECSINMEM 1000
 unsigned LASTREC = UINT_MAX;
 
 
@@ -128,14 +128,13 @@ struct CompareReport {
 Options opt; // parsed command-line options
 
 // variables used for IO:
-bool done=0; // whether or not the file has been consumed
-bool nextdone=0; // this is the penultimate done ; ie, whether or not the 2nd buffer exhausted the filehandle
+std::atomic<bool> done(0); // whether or not the file has been consumed
+std::atomic<bool> nextdone(0); // this is the penultimate done ; ie, whether or not the 2nd buffer exhausted the filehandle
+
 string MEM[ RECSINMEM ]; // buffers used for processing
 string OTHERMEM[ RECSINMEM ]; // these contain the DNA strings from the fastq file
-string *records; // pointer used to alterante between MEM and OTHERMEM
+string *records=NULL; // pointer used to alterante between MEM and OTHERMEM
 istream *currentInputStream; //pointer to stdin / current file opened for reading. fastq format is assumed.
-
-
 
 // multithreading variables:
 #ifndef NOTHREADS
@@ -316,6 +315,7 @@ buffer(string mem[]) {
     getline(*currentInputStream, dummy); // the quality string (ignored)
     ++i;
     if (i == RECSINMEM) {
+
       int c = currentInputStream->peek();
       if (c == EOF) {
 	LASTREC = RECSINMEM;
@@ -324,6 +324,8 @@ buffer(string mem[]) {
       return 0;
     }
   }
+
+
   LASTREC = i;
   for ( ; i < RECSINMEM; ++i)
     mem[i].clear();
@@ -347,8 +349,6 @@ buffer(string mem[]) {
  */
 void
 makeRecord(const char* dna, unsigned left, unsigned right, unsigned char orientation, unsigned strIndex, int id) {
-
-  //  cout << "HERE!\t"  << left << "\t" << right << endl << dna << endl;
 
   int len = (int) (right - left);
   int wordlen = ceil(len / (MAXWORD/2.0)); //number of binarywords to represent a haplotype
@@ -397,6 +397,8 @@ makeRecord(const char* dna, unsigned left, unsigned right, unsigned char orienta
 // id is the thread ID (set to 1 with no multithreading) matchIds are just indexes in the config, and the type is just the 4 types...
 void
 processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
+
+
   
   int a;
   vector< vector<unsigned> > fpMatches( numStrs, vector<unsigned>(10) ); // forwardflank, positive strand
@@ -411,18 +413,22 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
   for (a=id ; a < RECSINMEM; a += opt.numThreads) {
     const char *dna = records[a].c_str(); // ascii representation of DNA string
     unsigned dnalen = records[a].length();
+
+
+    //    if ((unsigned)a >= LASTREC) // creates a race condition!
+    //      break;
+
     if ((int)dnalen < minFrag)
-          continue;
-    
-    if ((unsigned)a >= LASTREC)
-      break;
+      continue;    
+
+
 
     bool gotOne=false;
     unsigned stop = dnalen - minLen + 1;
     for (unsigned j=0; j < stop; ++j, ++dna) {
       // this finds demonstrably wrong sequences (less than 'A' or greater than 'T' in the ascii table)
       if (*dna < 65 || *dna > 84) {
-	cerr << "Oops! I'm detecting an illegal character in the DNA string. The character is " << dna[j] << endl <<
+	cerr << "Oops! I'm detecting an illegal character in the DNA string. The character is " << *dna << endl <<
 	  "And the record is " << dna << endl;
 	exit(EXIT_FAILURE);
       }
@@ -798,7 +804,7 @@ void *
 workerThread(void *arg) {
   
   int id =  *((int*)arg ); // thread id
-  
+
   unsigned *matchIds = NULL;
   unsigned char *matchTypes = NULL;
   matchIds = new unsigned[ numStrs * 4];
@@ -811,7 +817,7 @@ workerThread(void *arg) {
     ;
 
  middle:
-  
+
   ++startedWorking;
   processDNA_Trie(id, matchIds, matchTypes);
 
@@ -835,7 +841,7 @@ workerThread(void *arg) {
   // last worker to check in
   if (workersWorking == 0) {    
 
-    while (! buffered) // ensure that the other buffer is filled... 
+    while (! buffered) //ensure that the other buffer is filled... 
       ; // ie, wait for buffered=1 assignment
 
     startedWorking=0;
@@ -846,7 +852,10 @@ workerThread(void *arg) {
       records = MEM;
 
     buffered=0; // we set buffered=0; ie, the other buffer needs to get filled
-    done = nextdone; // update done with the status of the current buffer
+
+    if (nextdone)
+      done = true; // update done with the status of the current buffer
+
     sem_post(&writersLock); // wake up the writer thread which fills the buffer
     
 
@@ -863,8 +872,10 @@ workerThread(void *arg) {
 
 void *
 writerThread(void *arg) {
+  done=buffer(MEM); // read in a bunch of data
+  if (done)
+    nextdone = true;
 
-  nextdone = done=buffer(MEM); // read in a bunch of data
   records = MEM; // set up the pointer
   workersWorking= opt.numThreads; // let the workers start processing the data
 
@@ -875,9 +886,12 @@ writerThread(void *arg) {
     else 
       nextdone=buffer(MEM);
 
-    buffered=1; // the double buffer is set up 
-    sem_wait(&writersLock); // wait for the readers to finish reading *records
+    buffered=1; // the double buffer is set up
 
+    if (! nextdone)
+      break; // no sense waiting...
+
+    sem_wait(&writersLock); // wait for the readers to finish reading *records
     
   }
 
@@ -972,8 +986,14 @@ main(int argc, char **argv) {
 
 #ifndef NOTHREADS
   if (opt.numThreads > 1) {
-    pthread_mutex_init(&ioLock, 0);
-    sem_init(&writersLock, 0, 0);
+    if (pthread_mutex_init(&ioLock, 0)) {
+      cerr << "Failed to init mutex..." << endl;
+    }
+
+    if (sem_init(&writersLock, 0, 0)) {
+      cerr << "Failed to init semaphore..." << endl;
+      return 1;
+    }
   }
 #endif
 

@@ -28,10 +28,10 @@ endif
 
 ifneq (, $(findstring mingw, $(SYS)))
 All: lookup.h str8.h str8.o parseConfig.o lookup.o trie.o
-	${CC} ${CFLAGS} -static -o str8.exe str8.o parseConfig.o lookup.o trie.o -static-libstdc++ -static-libgcc ${LIBS}
+	${CC} ${CFLAGS} -static -o cstr8.exe str8.o parseConfig.o lookup.o trie.o -static-libstdc++ -static-libgcc ${LIBS}
 else
 All: lookup.h str8.h str8.o parseConfig.o lookup.o trie.o
-	${CC} ${CFLAGS} -o str8 str8.o parseConfig.o lookup.o trie.o ${LIBS}
+	${CC} ${CFLAGS} -o cstr8 str8.o parseConfig.o lookup.o trie.o ${LIBS}
 endif
 
 str8.o: str8.h str8.cpp constants.h lookup.h

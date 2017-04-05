@@ -36,10 +36,15 @@ SOFTWARE.
 #include <cstring>
 #include <limits.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+
 #ifndef NOTHREADS
 #include <pthread.h>
 #include <semaphore.h>
-
 #include <atomic>
 #endif
 
@@ -139,7 +144,7 @@ istream *currentInputStream; //pointer to stdin / current file opened for readin
 // multithreading variables:
 #ifndef NOTHREADS
 pthread_mutex_t ioLock;
-sem_t writersLock; // the writer is blocked at this array
+sem_t *writersLock; // used to block the writer. modified to be a named semaphore for OSX compatibility (annoying!)
 
 // bugfix; was volatile.
 std::atomic<int> workersWorking(0); // the number of workers processing fastq records
@@ -856,7 +861,7 @@ workerThread(void *arg) {
     if (nextdone)
       done = true; // update done with the status of the current buffer
 
-    if (sem_post(&writersLock)) { // wake up the writer thread which fills the buffer
+    if (sem_post(writersLock)) { // wake up the writer thread which fills the buffer
       cerr << "Error waking up writer\n";
     }
 
@@ -897,7 +902,7 @@ writerThread(void *arg) {
     }
 
 
-    sem_wait(&writersLock); // wait for the readers to finish reading *records
+    sem_wait(writersLock); // wait for the readers to finish reading *records
 
   }
 
@@ -917,6 +922,10 @@ main(int argc, char **argv) {
   }
 
   unsigned i;
+
+  char buff[100];
+  sprintf(buff, "%ld", (long)getpid() );
+
   int start = parseArgs(argc, argv, opt);
 
   if (opt.numThreads == 0)
@@ -994,11 +1003,15 @@ main(int argc, char **argv) {
     if (pthread_mutex_init(&ioLock, 0)) {
       cerr << "Failed to init mutex..." << endl;
     }
-
+    /* unnamed semaphore. not supported on OSX!
     if (sem_init(&writersLock, 0, 0)) {
       cerr << "Failed to init semaphore..." << endl;
       return 1;
     }
+    */
+    writersLock = sem_open( buff , O_CREAT, 0600, 0);
+    
+
   }
 #endif
 
@@ -1099,7 +1112,8 @@ main(int argc, char **argv) {
 #ifndef NOTHREADS
   if (opt.numThreads > 1) {
     pthread_mutex_destroy(&ioLock);
-    sem_destroy(&writersLock);
+    //    sem_destroy(&writersLock);
+    sem_unlink(buff);
   }
 #endif
 

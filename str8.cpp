@@ -640,7 +640,7 @@ findMatchesOneThread() {
 void
 usage(char *arg0) {
 
-  cerr << "Correct usage for version Strait Razor v" << VERSION_NUM << endl << arg0 << " -c configFile [OPTIONS] fastqfile1 [fastqfile2 ... ]" << endl << "OR" << endl << arg0 << " -c configFile [OPTIONS] < fastqfile1" << endl;
+  cerr << "Correct usage for version cstr8 v" << VERSION_NUM << endl << arg0 << " -c configFile [OPTIONS] fastqfile1 [fastqfile2 ... ]" << endl << "OR" << endl << arg0 << " -c configFile [OPTIONS] < fastqfile1" << endl;
   cerr << endl << "IE, This program takes in standard input, or a bunch of (uncompressed) fastq files\nAnd remember, options are specified *before* the configfile and fastqs (ie, the arguments)" << endl << endl;
   cerr << "Possible arguments:" << endl << endl << 
     "\t-h (help; causes this to be printed)" << endl <<

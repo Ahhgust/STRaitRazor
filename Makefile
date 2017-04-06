@@ -19,10 +19,15 @@ ifneq (, $(findstring mingw, $(SYS)))
 	RM=del
 endif
 
-
+# turn the threading off (no library support, presumably)
 ifneq (${USETHREADS}, true)
 	LIBS=
 	CFLAGS += -DNOTHREADS
+endif
+
+# turn on named semaphores (OSX only)
+ifneq (, $(findstring apple, $(SYS)))
+	CFLAGS += -DOSX
 endif
 
 

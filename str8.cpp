@@ -144,7 +144,13 @@ istream *currentInputStream; //pointer to stdin / current file opened for readin
 // multithreading variables:
 #ifndef NOTHREADS
 pthread_mutex_t ioLock;
+
+// OSX requires named semaphores. yay. Windows does not work with named semaphores. boo.
+#ifdef OSX
 sem_t *writersLock; // used to block the writer. modified to be a named semaphore for OSX compatibility (annoying!)
+#else
+sem_t writersLock;
+#endif
 
 // bugfix; was volatile.
 std::atomic<int> workersWorking(0); // the number of workers processing fastq records
@@ -860,11 +866,15 @@ workerThread(void *arg) {
 
     if (nextdone)
       done = true; // update done with the status of the current buffer
-
-    if (sem_post(writersLock)) { // wake up the writer thread which fills the buffer
+#ifdef OSX
+    if (sem_post(writersLock)) { // wake up the writer thread which fills the buffer (Named semaphore)
       cerr << "Error waking up writer\n";
     }
-
+#else
+    if (sem_post(&writersLock)) { // wake up the writer thread which fills the buffer (unnamed semaphore)
+      cerr << "Error waking up writer\n";
+    }
+#endif
     workersWorking= opt.numThreads; // wake up the othe readers
     pthread_mutex_unlock(&ioLock);  // release mutex
     goto middle;
@@ -901,9 +911,11 @@ writerThread(void *arg) {
       break; // no sense waiting...
     }
 
-
+#ifdef OSX
     sem_wait(writersLock); // wait for the readers to finish reading *records
-
+#else
+    sem_wait(&writersLock); // wait for the readers to finish reading *records
+#endif
   }
 
   return NULL;
@@ -923,8 +935,11 @@ main(int argc, char **argv) {
 
   unsigned i;
 
+#ifdef OSX // for the named semaphores required by OSX
   char buff[100];
   sprintf(buff, "%ld", (long)getpid() );
+#endif
+
 
   int start = parseArgs(argc, argv, opt);
 
@@ -1003,13 +1018,16 @@ main(int argc, char **argv) {
     if (pthread_mutex_init(&ioLock, 0)) {
       cerr << "Failed to init mutex..." << endl;
     }
-    /* unnamed semaphore. not supported on OSX!
+    /* unnamed semaphore. not supported on OSX! */
+#ifdef OSX
+    writersLock = sem_open( buff , O_CREAT, 0600, 0);
+#else
     if (sem_init(&writersLock, 0, 0)) {
       cerr << "Failed to init semaphore..." << endl;
       return 1;
     }
-    */
-    writersLock = sem_open( buff , O_CREAT, 0600, 0);
+#endif
+
     
 
   }
@@ -1112,8 +1130,13 @@ main(int argc, char **argv) {
 #ifndef NOTHREADS
   if (opt.numThreads > 1) {
     pthread_mutex_destroy(&ioLock);
-    //    sem_destroy(&writersLock);
+
+#ifdef OSX
     sem_unlink(buff);
+#else
+    sem_destroy(&writersLock);
+#endif
+
   }
 #endif
 

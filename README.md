@@ -7,19 +7,19 @@ Getting started:
 Str8rzr 3.0 is written in C/C++ with multithreading support using the pthreads library. This new release couples a new search strategy (see algorithm) coupled with a complete redesign of the code-base used to identify short tandem repeats (STRs). This code base is (ostensibly) portable, and has been rigorously tested in Windows, Mac, and Unix environments, though the excel workbooks used to analyze the STRs only work with Microsoft Excel and are unlikely to function in your typical linux installation (but see Wine; https://www.winehq.org/). 
 
 Quick start:
-Pick the pre-compiled binary version of str8 that is appropriate to your operating system (i.e., str8.exe for windows, str8 for everything else), and run it as:
+Pick the pre-compiled binary version of cstr8 that is appropriate to your operating system (i.e., cstr8.exe for windows, cstr8_osX for mac, cstr8 for everything else), and run it as:
 
-	str8 -c configFile fastqfile > allsequences.txt
+     	cstr8 -c configFile fastqfile > allsequences.txt
 
 To use multithreading (not default; using 8 processors in this example), type:
 
-	str8 -p 8 -c configFile fastqfile > allsequences.txt
+	cstr8 -p 8 -c configFile fastqfile > allsequences.txt
 
 Note that on linux/mac systems, if . is not in your PATH you need to type: 
 
-      ./str8 … 
+      ./cstr8 … 
 
-instead of str8. 
+instead of cstr8. 
 
 Code requirements:
 The included source code
@@ -33,15 +33,15 @@ The following unix utilities:
 	grep
 	7zip (not really a unix utility per se, but it's handy)
 
-which allows str8 to operate on compressed gzip (with zcat) or bz2 (with bzip2) files a la:
+which allows cstr8 to operate on compressed gzip (with zcat) or bz2 (with bzip2) files a la:
 
-      zcat file.fastq.gz | str8 -c configFile > allSequences.txt
+      zcat file.fastq.gz | cstr8 -c configFile > allSequences.txt
       
 or for Windows users:
 	
-      7z file.fastq.gz -so | str8 -c configFile > allSequences.txt
+      7z file.fastq.gz -so | cstr8 -c configFile > allSequences.txt
 
-Otherwise str8 only operates on (uncompressed) fastq files. grep can be used to parse out particular markers (e.g., 
+Otherwise cstr8 only operates on (uncompressed) fastq files. grep can be used to parse out particular markers (e.g., 
 
      grep -w vWR allsequences.txt > vWR.txt 
 
@@ -74,7 +74,7 @@ Windows users:
 	https://sourceforge.net/projects/mingw-w64
 Click on the green download button. Run the downloaded program, keeping the default settings as-is.
 After you install mingw-w64, make sure you set up your PATH environmental variable! 
-If you stuck with the default installation directory, then you need to add: C:\Program Files (x86)\mingw-w64\i686-6.2.0-posix-dwarf-rt_v5-rev1\mingw32\bin to your PATH. To do this, click on the prompt and search for Environment Variable. Under system properties->advanced->environment variables, go to System variables, and click on Path (case insensitive spelling), and edit, and add the above path (C:\Program Files (x86)\mingw-w64\i686-6.2.0-posix-dwarf-rt_v5-rev1\mingw32\bin) to your path. This is probably a good place to stash unix utilities as well (e.g., grep, head, tail).  As a reminder, your PATH is a set of directories that contain the executables (typically binaries) that are available for you to run. e.g., when you complete the above installation instructions, C:\Program Files (x86)\mingw-w64\i686-6.2.0-posix-dwarf-rt_v5-rev1\mingw32\bin will be in your PATH, and you can add str8 to that directory and it will work from any directory on your system.
+If you stuck with the default installation directory, then you need to add: C:\Program Files (x86)\mingw-w64\i686-6.2.0-posix-dwarf-rt_v5-rev1\mingw32\bin to your PATH. To do this, click on the prompt and search for Environment Variable. Under system properties->advanced->environment variables, go to System variables, and click on Path (case insensitive spelling), and edit, and add the above path (C:\Program Files (x86)\mingw-w64\i686-6.2.0-posix-dwarf-rt_v5-rev1\mingw32\bin) to your path. This is probably a good place to stash unix utilities as well (e.g., grep, head, tail).  As a reminder, your PATH is a set of directories that contain the executables (typically binaries) that are available for you to run. e.g., when you complete the above installation instructions, C:\Program Files (x86)\mingw-w64\i686-6.2.0-posix-dwarf-rt_v5-rev1\mingw32\bin will be in your PATH, and you can add cstr8 to that directory and it will work from any directory on your system.
  	
 To get zcat and/or bzip2 (or any of a handful of unix utilities that have been ported to windows), use: 
 <blockquote>https://sourceforge.net/projects/unxutils/</blockquote><br>
@@ -89,21 +89,21 @@ Simply type:<br>
 Windows:
 <blockquote>	mingw32-make </blockquote>
 	
-This command will make the str8 binary
+This command will make the cstr8 binary
 
 Working with compressed files:
 By example:
 Gzipped files:
-<blockquote> zcat example.fastq.gz | str8 -c configFile > allsequences.txt </blockquote>
+<blockquote> zcat example.fastq.gz | cstr8 -c configFile > allsequences.txt </blockquote>
 Bz2 files:
-<blockquote> bunzip2 -c example.fastq.bz2 | str8 -c configFile > allsequences.txt </blockquote>
+<blockquote> bunzip2 -c example.fastq.bz2 | cstr8 -c configFile > allsequences.txt </blockquote>
 
-(if this syntax fails, you’re probably on a windows system and you probably failed to install zcat/bunzip2. Type zcat --help or bunzip2 --help . If you see instructions on how to use these programs, that means that they’re installed correctly and the problem lies with str8 (so contact me, August). Otherwise, try and fix the installation.
+(if this syntax fails, you’re probably on a windows system and you probably failed to install zcat/bunzip2. Type zcat --help or bunzip2 --help . If you see instructions on how to use these programs, that means that they’re installed correctly and the problem lies with cstr8 (so contact me, August). Otherwise, try and fix the installation.
 
 
 Configuration file format:
 
-Str8 needs to know, *a priori*, which STRs (or really, any locus) you’re looking for. To do this, one needs to describe the locus; specifically, str8 needs to know unique sequences before and after the STR, what sort of motif is expected in the str (e.g., GATA), and both the period (4 for GATA), and the offset (that is, the number of non-STR bases we are capturing). The period and the offset are used to convert the length of the haplotype between the markers into the number of repeats found (i.e., to map MPS data into capillary electrophoresis (CE) data). Below is an example of a config file:
+cstr8 needs to know, *a priori*, which STRs (or really, any locus) you’re looking for. To do this, one needs to describe the locus; specifically, str8 needs to know unique sequences before and after the STR, what sort of motif is expected in the str (e.g., GATA), and both the period (4 for GATA), and the offset (that is, the number of non-STR bases we are capturing). The period and the offset are used to convert the length of the haplotype between the markers into the number of repeats found (i.e., to map MPS data into capillary electrophoresis (CE) data). Below is an example of a config file:
 
 |#Marker Name	| Type |	5' Anchor             |  3' Anchor      | Motif         |	Period	| Offset| 
 | :---------: | :--: | :---------------------:  | :-------------: | :-----------: | :-----: | :---: | 
@@ -125,8 +125,8 @@ Note that for the anchor, a quantification (see DYS389II) can be used on the fla
 
 
 Algorithm description:<br>
-Str8 uses the following search strategy:<br>
-It uses the anchors, and searches each read from the fastq file for the locations of anchors (previously called flanks), and their orientation and strand, as well as the location of all sequence motifs. Anchor-search is approximate, permitting a single substitution (no indels), while search for the motif is exact. It then looks at the config file (see below), and str8 extracts the sequence between anchors if (and only if): <br>
+cstr8 uses the following search strategy:<br>
+It uses the anchors, and searches each read from the fastq file for the locations of anchors (previously called flanks), and their orientation and strand, as well as the location of all sequence motifs. Anchor-search is approximate, permitting a single substitution (no indels), while search for the motif is exact. It then looks at the config file (see below), and cstr8 extracts the sequence between anchors if (and only if): <br>
 1.	they match in the correct orientation (forward then reverse, positive strand or reverse then forward on the negative strand), <br>
 2.	if the proper motif is found within these anchors (note that motifs may overlap anchors). <br>
 3.	anchors themselves are not allowed to overlap, and as such if an overlap is found, the first anchor found is kept and the second anchor is discarded.<br>
@@ -139,7 +139,7 @@ Note that loci are allowed to overlap (thus permitting the extraction of SNPs fr
 
 Algorithms for Approximate String matching: <br>
 Previous build (v <= 2.6): <br>
-The previous builds of str8 used the unix utility tre-agrep, which is an implementation of Gene Myer’s (Myers 1999) bitap algorithm (https://en.wikipedia.org/wiki/Bitap_algorithm). Bitap can be used to find inexact string matches under the Levenshtein distance function (ie, the unit edit distance; see https://en.wikipedia.org/wiki/Edit_distance). Bitap was applied to each flank for each read, so it scales according to the number of reads (R) * the number of anchors (A) * the longest anchor length m. For a constant edit distance, this strategy scales according to O(RAm). The default setting was to find matching substrings +/- any single substitution (but not to consider 1-base indels).
+The previous builds of cstr8 used the unix utility tre-agrep, which is an implementation of Gene Myer’s (Myers 1999) bitap algorithm (https://en.wikipedia.org/wiki/Bitap_algorithm). Bitap can be used to find inexact string matches under the Levenshtein distance function (ie, the unit edit distance; see https://en.wikipedia.org/wiki/Edit_distance). Bitap was applied to each flank for each read, so it scales according to the number of reads (R) * the number of anchors (A) * the longest anchor length m. For a constant edit distance, this strategy scales according to O(RAm). The default setting was to find matching substrings +/- any single substitution (but not to consider 1-base indels).
 
 
 

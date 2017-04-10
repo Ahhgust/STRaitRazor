@@ -1,10 +1,10 @@
-# STRaitRazor
+# cSTRait
 
-Str8rzr 3.0 Documentation
+### cSTRait (aka Str8rzr 3.0) Documentation
 
 
 Getting started:
-Str8rzr 3.0 is written in C/C++ with multithreading support using the pthreads library. This new release couples a new search strategy (see algorithm) coupled with a complete redesign of the code-base used to identify short tandem repeats (STRs). This code base is (ostensibly) portable, and has been rigorously tested in Windows, Mac, and Unix environments, though the excel workbooks used to analyze the STRs only work with Microsoft Excel and are unlikely to function in your typical linux installation (but see Wine; https://www.winehq.org/). 
+cstr8 is written in C/C++ with multithreading support using the pthreads library. This new release couples a new search strategy (see algorithm) coupled with a complete redesign of the code-base used to identify short tandem repeats (STRs). This code base is (ostensibly) portable, and has been rigorously tested in Windows, Mac, and Unix environments, though the excel workbooks used to analyze the STRs only work with Microsoft Excel and are unlikely to function in your typical linux installation (but see Wine; https://www.winehq.org/). 
 
 Quick start:
 Pick the pre-compiled binary version of cstr8 that is appropriate to your operating system (i.e., cstr8.exe for windows, cstr8_osX for mac-- note rename this to cstr8 for everything to function correctly, cstr8 for everything else), and run it as:

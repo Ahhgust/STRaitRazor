@@ -63,6 +63,13 @@ validDNA(const char* c) {
 vector<Config>*
 parseConfig(char *file, unsigned *numStrs, char *filt) {
 
+
+  if (file==NULL) {
+    cerr << "Empty filename for the config file detected..." << endl;
+    exit(EXIT_FAILURE);
+  }
+
+
   ifstream myfile(file);
   
   if (! myfile.is_open() ) {

@@ -8,8 +8,8 @@ SEQLIBPATH=/usr/local/src/SeqLib/SeqLib
 USE_THREADS=true
 #USETHREADS=false
 
-#USE_SEQ_LIB=true
-USE_SEQ_LIB=false
+USE_SEQ_LIB=true
+#USE_SEQ_LIB=false
 
 INCLUDES=
 
@@ -33,6 +33,12 @@ ifeq (${USE_SEQ_LIB}, true)
 	INCLUDES= -I${SEQLIBPATH} -I${SEQLIBPATH}/htslib 
 	CFLAGS += -DSEQLIB
 endif
+
+# turn on named semaphores (OSX only)
+ifneq (, $(findstring apple, $(SYS)))
+	CFLAGS += -DOSX
+endif
+
 
 
 

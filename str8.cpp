@@ -36,6 +36,12 @@ SOFTWARE.
 #include <cstring>
 #include <limits.h>
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+
 #ifndef NOTHREADS
 #include <pthread.h>
 #include <semaphore.h>
@@ -59,7 +65,7 @@ SOFTWARE.
 #include "trie.h"
 
 // version of strait razor!
-const char* VERSION_NUM = "3.01";
+const char* VERSION_NUM = "1.01";
 
 using namespace std;
 
@@ -86,6 +92,7 @@ BamWriter bamWriter( SeqLib::BAM );
 
 char *referenceGenome=NULL;
 
+// TODO: fix nominal allele name when the includeAnchor flag is set!
 
 
 
@@ -193,7 +200,12 @@ vector <vector < Output > > output;
 // multithreading variables:
 #ifndef NOTHREADS
 pthread_mutex_t ioLock; // poorly named; this is the lock associated w/ reading data
+
+#ifdef OSX
+sem_t *writersLock; // used to block the writer. modified to be a named semaphore for OSX compatibility (annoying!)
+#else
 sem_t writersLock; // the writer is blocked at this array
+#endif
 
 pthread_mutex_t outLock; // controls printing out (fastq/bam)
 pthread_mutex_t bamLock; // lock controlling cache of bam records
@@ -724,15 +736,17 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
     if ((int)dnalen < minFrag)
           continue;
 
+    /*
     if ((unsigned)a >= LASTREC)
       break;
+    */
 
     bool gotOne=false;
     unsigned stop = dnalen - minLen + 1;
     for (unsigned j=0; j < stop; ++j, ++dna) {
       // this finds demonstrably wrong sequences (less than 'A' or greater than 'T' in the ascii table)
       if (*dna < 65 || *dna > 84) {
-	cerr << "Oops! I'm detecting an illegal character in the DNA string. The character is " << dna[j] << endl <<
+	cerr << "Oops! I'm detecting an illegal character in the DNA string. The character is " << *dna << endl <<
 	  "And the record is " << dna << endl;
 	exit(EXIT_FAILURE);
       }
@@ -857,24 +871,26 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
       for (unsigned i = 0; i < numStrs; ++i) {
 	if (lastHitRecord[i]== (unsigned) a 
 	    && validMotif[i]
-	    && (fpMatches[i].size() == 0 || rrMatches[i].size()==0) // ensure that the STR is only appearing once, and once in the proper orientation
 	    ) { // this STR was found for this read
 	  // positive strand match
 	  if (fpMatches[i].size() == (*c)[i].forwardCount) {
 	    if (rpMatches[i].size() == (*c)[i].reverseCount ) {
+
+	      if ( rrMatches[i].size() != (*c)[i].reverseCount  ||
+		   frMatches[i].size() != (*c)[i].forwardCount ) {
 	      
 #if DEBUG
-	      cerr << c->at(i).locusName << " STR on forward strand " << i << " fpsize " << fpMatches[i].size() <<
-		" rpsize " << rpMatches[i].size() << endl;
+		cerr << c->at(i).locusName << " STR on forward strand " << i << " fpsize " << fpMatches[i].size() <<
+		  " rpsize " << rpMatches[i].size() << endl;
 #endif
 	      
-	      if (fpMatches[i].back()  < rpMatches[i].front()){
-		if (opt.includeAnchors) 
-		  makeRecord(records[a], fpMatches[i].front() - (*c)[i].forwardLength, rpMatches[i].back() + (*c)[i].reverseLength, FORWARDFLANK, i, id);
-		else
-		  makeRecord(records[a], fpMatches[i].front(), rpMatches[i].back(), FORWARDFLANK, i, id);
+		if (fpMatches[i].back()  < rpMatches[i].front()){
+		  if (opt.includeAnchors) 
+		    makeRecord(records[a], fpMatches[i].front() - (*c)[i].forwardLength, rpMatches[i].back() + (*c)[i].reverseLength, FORWARDFLANK, i, id);
+		  else
+		    makeRecord(records[a], fpMatches[i].front(), rpMatches[i].back(), FORWARDFLANK, i, id);
+		}
 	      }
-
 	    } else if (opt.verbose && rpMatches[i].size() < (*c)[i].reverseCount ) { // not enough matches for the second anchor
 	      ++biasCounts[id][i];
 	    }
@@ -1107,7 +1123,7 @@ parseArgs(int argc, char **argv, Options &opt) {
 	  ++i;
 	  opt.config = argv[i];
 	}
-      } else if (argv[i][1] == 'r') { // this config file
+      } else if (argv[i][1] == 'r') { 
 	if (i == argc-1) {
 	  cerr << endl<< "Option -r requires a file; the reference genome file" << endl << endl;
 	  errors=1;
@@ -1220,9 +1236,15 @@ workerThread(void *arg) {
     //done = nextdone; // update done with the status of the current buffer
     if (nextdone)
       done=true;
-
-    sem_post(&writersLock); // wake up the writer thread which fills the buffer
-    
+#ifdef OSX
+    if (sem_post(writersLock)) { // wake up the writer thread which fills the buffer (Named semaphore)
+      cerr << "Error waking up writer\n";
+    }
+#else
+    if (sem_post(&writersLock)) { // wake up the writer thread which fills the buffer
+      cerr << "Error waking up writer\n";
+    }
+#endif
 
     workersWorking= opt.numThreads; // wake up the other readers
     pthread_mutex_unlock(&ioLock);  // release mutex
@@ -1264,8 +1286,11 @@ writerThread(void *arg) {
       nextdone=buffer(MEM);
 
     buffered=1; // the double buffer is set up 
+#ifdef OSX
+    sem_wait(writersLock); // wait for the readers to finish reading *records
+#else
     sem_wait(&writersLock); // wait for the readers to finish reading *records
-    
+#endif
   }
 
   return NULL;
@@ -1305,7 +1330,11 @@ main(int argc, char **argv) {
 
   if (opt.numThreads == 0)
     opt.numThreads=1;
-  
+
+#ifdef OSX // for the named semaphores required by OSX
+  char buff[100];
+  sprintf(buff, "%ld", (long)getpid() );
+#endif  
   
   int *ids;
   
@@ -1386,12 +1415,19 @@ main(int argc, char **argv) {
 	pthread_mutex_init(&outLock, 0)
 	||
 	pthread_mutex_init(&bamLock, 0)
-	||
-	sem_init(&writersLock, 0, 0)	
 	) {
       cerr << "Failed to create locks!!" << endl;
       return 1;
     }
+#ifdef OSX
+    writersLock = sem_open( buff , O_CREAT, 0600, 0);
+#else
+    if (sem_init(&writersLock, 0, 0)) {
+      cerr << "Failed to init semaphore..." << endl;
+      return 1;
+    }
+#endif
+
   }
 #endif
 
@@ -1503,7 +1539,11 @@ main(int argc, char **argv) {
     pthread_mutex_destroy(&ioLock);
     pthread_mutex_destroy(&outLock);
     pthread_mutex_destroy(&bamLock);
+#ifdef OSX
+    sem_unlink(buff);
+#else
     sem_destroy(&writersLock);
+#endif
   }
 #endif
 

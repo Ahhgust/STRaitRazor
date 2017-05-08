@@ -1,10 +1,10 @@
 
 
 @echo off
-REM Can put an absolute path to cstr8 here. or you can set your $PATH environmental variable to include the path of str8
-SET straitrazor="cstr8"
+REM Can put an absolute path to str8rzr here. or you can set your $PATH environmental variable to include the path of str8rzr
+SET straitrazor="str8rzr"
 SET numcores=4
-SET config="newconfig"
+SET config="Forenseq.config"
 
 for %%f in (*.fastq) do (
   SET basename=%%~nf

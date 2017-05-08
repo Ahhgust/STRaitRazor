@@ -221,12 +221,38 @@ printReports(FILE *stream, map< Report, pair <unsigned, unsigned>, CompareReport
 
   unsigned i, j, stop, mod, period, offset;
   string s;
-  for ( ; it != vec.end(); ++it) {
-    if (it->second.first + it->second.second < minCount)
-      continue;
+  unsigned totalSkippedPositive = 0;
+  unsigned totalSkippedNegative = 0;
+  unsigned prevStrIndex = UINT_MAX;
+  Report rep;
 
-    Report rep = it->first;
+  for ( ; it != vec.end(); ++it) {
+
+    rep = it->first;
+
+    // print out the number of records that were below threshold.    
+    // the outer-most sort is by locus, so this approach is correct
+    if (rep.strIndex != prevStrIndex) {
+      if (totalSkippedPositive + totalSkippedNegative >0) {
+
+	fprintf(stream, "%s:0.0\t0 bases\tSumBelowThreshold",  s.c_str());
+	if (noRC) 
+	  fprintf(stream, "\t\t%u\n",  totalSkippedPositive + totalSkippedNegative);
+	else
+	  fprintf(stream, "\t%u\t%u\n",  totalSkippedPositive , totalSkippedNegative);
+
+      }
+      prevStrIndex = rep.strIndex;
+      totalSkippedPositive = totalSkippedNegative = 0;
+    }
+
     s = (*c)[rep.strIndex].locusName;
+
+    if (it->second.first + it->second.second < minCount) {
+      totalSkippedPositive += it->second.second;
+      totalSkippedNegative += it->second.first;
+      continue;
+    }
 
     // compute the STR nomenclature
     period = (rep.hapLength-(*c)[rep.strIndex].motifOffset)/ (*c)[rep.strIndex].motifPeriod;
@@ -252,10 +278,19 @@ printReports(FILE *stream, map< Report, pair <unsigned, unsigned>, CompareReport
     else 
       fprintf(stream, "\t%u\t%u\n", it->second.second, it->second.first );
 
-
-    
-
   }
+
+  // grab the trailing values (if necessary)
+  if (totalSkippedPositive + totalSkippedNegative >0) {
+    
+    fprintf(stream, "%s:0.0\t0 bases\tSumBelowThreshold",  s.c_str());
+    if (noRC) 
+      fprintf(stream, "\t\t%u\n",  totalSkippedPositive + totalSkippedNegative);
+    else
+      fprintf(stream, "\t%u\t%u\n",  totalSkippedPositive , totalSkippedNegative);
+    
+  }
+  
   
   if (opt.verbose) {
     fprintf(stream, "\n\nBias Reporting\nMarkerName\tMissingRightanchor_Counts\tTotalMatches_Count\tRatio\tAvgLeftPos\tAvgRightPos\n");

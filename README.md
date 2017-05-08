@@ -95,7 +95,9 @@ or
 
 if its not in your PATH
 
-STRait Razor v3.0 supports the following flags:
+STRait Razor v3.0 supports the following flags: <br>
+<br>
+
        -c configFile (This is REQUIRED). A configuration file (as described above.)
        -n (No reverse complementing-- str8rzr automically reverse complements haplotypes found on the negative strand to the positive strand. Really, to the same strand as specified in the config file)
        -v (verbose ; this prints out some additional summary statistics that pertain to incomplete haplotype matches)

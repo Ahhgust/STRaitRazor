@@ -84,6 +84,28 @@ ii.	Allowing for n matches allows the extraction of duplicated loci, and when n 
 Note that loci are allowed to overlap (thus permitting the extraction of SNPs from within the haplotype). Once a locus has been found within a read, the intervening haplotype is extracted. The haplotype itself is recorded, and the number of times it is observed. This recording includes whether or not the haplotype was found on the positive or negative strand (as defined by the config file).<br>
 <br>
 
+### Description of flags
+    Running str8rzr with no arguments to see the flags/options. EG:
+    
+    str8rzr
+
+or
+
+	./str8rzr
+
+if its not in your PATH
+
+STRait Razor v3.0 supports the following flags:
+       -c configFile (This is REQUIRED). A configuration file (as described above.)
+       -n (No reverse complementing-- str8rzr automically reverse complements haplotypes found on the negative strand to the positive strand. Really, to the same strand as specified in the config file)
+       -v (verbose ; this prints out some additional summary statistics that pertain to incomplete haplotype matches)
+       -a (anchor Hamming distance. This is the (maximum) Hamming distance allowed between a substring of a read and the anchor sequence as to what constitutes a match. 1 is the default. Setting to 0 and 2 is allowed, but not recommended. being too strict (0) will cause allelic dropout in individuals with SNPs in the anchors, and setting it to 2 will take longer to build, and cause false matches, and in turn cause reads to be dropped. e.g., if anchor should be present only once, setting this to two may (and will) cause reads to falsely "match" anchors to two locations, which in turn causes the intervening haplotype to be dropped.)
+       -m (motif Hamming distance. default=0, 1 is allowed. This hasn't been as thoroughly vetted as the -a flag, but setting this to 0 works well in practice).
+       -p numProcessors (default=1. Can be any positive integer, but setting it equal to the number of cores on your system is probably a good idea. This turns on multiple threads)
+       -t filTer (eg., autosomes, this filters the output to just that of the TYPE specified in the config file. This is acheived simply by only adding in the records that match that type from the config file into the data structures)
+       -o filename (This redirects the output to a file)
+       -f count (this removes haplotypes with less than *count* occurrences from the output. The vast majority of entries in the output of this program are "singletons"-- ie, haplotypes that occur once. This cleans that at up)
+
 
 ### Compiling
 
@@ -140,7 +162,7 @@ Bz2 files:
 
 (if this syntax fails, you’re probably on a windows system and you probably failed to install zcat/bunzip2. Type zcat --help or bunzip2 --help . If you see instructions on how to use these programs, that means that they’re installed correctly and the problem lies with str8rzr (so contact me, August). Otherwise, try and fix the installation.
 
-Algorithms for Approximate String matching: <br>
+### Algorithms for Approximate String matching: <br>
 Previous build (v <= 2.6): <br>
 The previous builds of str8rzr used the unix utility tre-agrep, which is an implementation of Gene Myer’s (Myers 1999) bitap algorithm (https://en.wikipedia.org/wiki/Bitap_algorithm). Bitap can be used to find inexact string matches under the Levenshtein distance function (ie, the unit edit distance; see https://en.wikipedia.org/wiki/Edit_distance). Bitap was applied to each flank for each read, so it scales according to the number of reads (R) * the number of anchors (A) * the longest anchor length m. For a constant edit distance, this strategy scales according to O(RAm). The default setting was to find matching substrings +/- any single substitution (but not to consider 1-base indels).
 

@@ -53,7 +53,7 @@ SOFTWARE.
 #include "trie.h"
 
 // version of strait razor!
-const float VERSION_NUM = 1.0;
+const float VERSION_NUM = 3.0;
 
 using namespace std;
 

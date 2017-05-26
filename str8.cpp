@@ -219,7 +219,8 @@ printReports(FILE *stream, map< Report, pair <unsigned, unsigned>, CompareReport
 
   vector< pair<Report, pair<unsigned, unsigned> > >::iterator it = vec.begin();
 
-  unsigned i, j, stop, mod, period, offset;
+  unsigned i, j, stop, mod;
+  int offset, period;
   string s;
   unsigned totalSkippedPositive = 0;
   unsigned totalSkippedNegative = 0;
@@ -255,13 +256,13 @@ printReports(FILE *stream, map< Report, pair <unsigned, unsigned>, CompareReport
     }
 
     // compute the STR nomenclature
-    period = (rep.hapLength-(*c)[rep.strIndex].motifOffset)/ (*c)[rep.strIndex].motifPeriod;
-    offset = (rep.hapLength-(*c)[rep.strIndex].motifOffset) % (*c)[rep.strIndex].motifPeriod;
+    period = ( (int)rep.hapLength- (int)(*c)[rep.strIndex].motifOffset)/ (int)(*c)[rep.strIndex].motifPeriod;
+    offset = ( (int)rep.hapLength-(int)(*c)[rep.strIndex].motifOffset) % (int)(*c)[rep.strIndex].motifPeriod;
     if (offset) {
-      fprintf(stream, "%s:%u.%u\t%u bases\t",  s.c_str(), period, offset,
+      fprintf(stream, "%s:%i.%i\t%u bases\t",  s.c_str(), period, offset,
 	     rep.hapLength);
     } else {
-      fprintf(stream, "%s:%u\t%u bases\t", s.c_str(), period, 
+      fprintf(stream, "%s:%i\t%u bases\t", s.c_str(), period, 
 	      rep.hapLength);
     }
 

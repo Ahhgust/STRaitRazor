@@ -1,7 +1,7 @@
 CC=g++
 CFLAGS=-Wall -std=c++11 -Ofast -DDEBUG=0 -march=native -fomit-frame-pointer
  
-#CFLAGS=-Wall -std=c++11 -g -DDEBUG=0
+#CFLAGS=-Wall -std=c++11 -g -DDEBUG=1
 #CFLAGS=-Wall -std=c++11 -g -pg -DDEBUG=0
 
 # Can turn off threads when compiling (in case the required libraries are not present...)

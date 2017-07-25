@@ -30,6 +30,7 @@ SOFTWARE.
 #include <stdint.h>
 #include <vector>
 #include <string>
+#include <cstring>
 
 
 // This is where the max anchor size of 32 is set.

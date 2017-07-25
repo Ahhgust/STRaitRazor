@@ -47,6 +47,18 @@ using namespace std;
 
 
 bool
+validDNAWithAmbiguities(const char* c) {
+
+    while (*c) {
+      if (*c != 'A' && *c != 'C' && *c != 'T' && *c != 'G' && 
+	  *c != 'R' && *c != 'Y' && *c != 'S' && *c != 'W' && *c != 'K' && *c != 'M')
+	return false;
+      ++c;
+    }
+    return true;
+}
+
+bool
 validDNA(const char* c) {
 
     while (*c) {
@@ -130,14 +142,14 @@ parseConfig(char *file, unsigned *numStrs, char *filt) {
 	conf.locusName << endl;
     }
     
-    if (! validDNA( conf.forwardFlank.c_str() ) ) {
+    if (! validDNAWithAmbiguities( conf.forwardFlank.c_str() ) ) {
 	cerr << "Locus " << conf.locusName << " has illegal characters in " <<
 	  conf.forwardFlank << endl;
 	exit(EXIT_FAILURE);
     }
 
 
-    if (! validDNA( conf.reverseFlank.c_str() ) ) {
+    if (! validDNAWithAmbiguities( conf.reverseFlank.c_str() ) ) {
 	cerr << "Locus " << conf.locusName << " has illegal characters in " <<
 	  conf.reverseFlank << endl;
 	exit(EXIT_FAILURE);

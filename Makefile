@@ -1,9 +1,9 @@
 CC=g++
-CFLAGS=-Wall -std=c++11 -Ofast -DDEBUG=0 -march=native -fomit-frame-pointer
+CFLAGS=-Wall -std=c++11 -Ofast -DDEBUG=0 -fomit-frame-pointer
 
 SEQLIBPATH=/usr/local/src/SeqLib/SeqLib
 # nosigncompare b/c of seqlib. 
-#CFLAGS=-Wall -std=c++11 -g -DDEBUG=0 -Wno-sign-compare
+#CFLAGS=-Wall -std=c++11 -g -DDEBUG=1 -Wno-sign-compare
 
 USE_THREADS=true
 #USETHREADS=false
@@ -44,10 +44,10 @@ endif
 
 ifneq (, $(findstring mingw, $(SYS)))
 All: lookup.h str8.h str8.o parseConfig.o lookup.o trie.o
-	${CC} ${CFLAGS} ${INCLUDES} -static -o str8.exe str8.o parseConfig.o lookup.o trie.o -static-libstdc++ -static-libgcc ${LIBS}
+	${CC} ${CFLAGS} ${INCLUDES} -static -o str8rzr.exe str8.o parseConfig.o lookup.o trie.o -static-libstdc++ -static-libgcc ${LIBS}
 else
 All: lookup.h str8.h str8.o parseConfig.o lookup.o trie.o
-	${CC} ${CFLAGS} ${INCLUDES} -o str8 str8.o parseConfig.o lookup.o trie.o ${LIBS}
+	${CC} ${CFLAGS} ${INCLUDES} -o str8rzr str8.o parseConfig.o lookup.o trie.o ${LIBS}
 endif
 
 str8.o: str8.h str8.cpp constants.h lookup.h

@@ -196,7 +196,7 @@ Trie::initMem(unsigned num_nodes) {
 
 
 // nonrecursive implementation;
-// it takes in a binary word of length wordLen
+// it takes in a word (w) of length wordLen
 // and a unique identifier (index in the config)
 // as well as the current root of the suffix trie, as well as a memory pool
 // and it adds w to the suffix trie.

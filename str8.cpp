@@ -288,7 +288,8 @@ printReports(FILE *stream, map< Report, pair <unsigned, unsigned>, CompareReport
 
   vector< pair<Report, pair<unsigned, unsigned> > >::iterator it = vec.begin();
 
-  unsigned i, j, stop, mod, period, offset;
+  unsigned i, j, stop, mod;
+  int period, offset;
   string s;
   for ( ; it != vec.end(); ++it) {
     if (it->second.first + it->second.second < minCount)
@@ -301,10 +302,10 @@ printReports(FILE *stream, map< Report, pair <unsigned, unsigned>, CompareReport
     period = (rep.hapLength-(*c)[rep.strIndex].motifOffset)/ (*c)[rep.strIndex].motifPeriod;
     offset = (rep.hapLength-(*c)[rep.strIndex].motifOffset) % (*c)[rep.strIndex].motifPeriod;
     if (offset) {
-      fprintf(stream, "%s:%u.%u\t%u bases\t",  s.c_str(), period, offset,
+      fprintf(stream, "%s:%d.%d\t%u bases\t",  s.c_str(), period, offset,
 	     rep.hapLength);
     } else {
-      fprintf(stream, "%s:%u\t%u bases\t", s.c_str(), period, 
+      fprintf(stream, "%s:%d\t%u bases\t", s.c_str(), period, 
 	      rep.hapLength);
     }
 
@@ -553,7 +554,7 @@ initBamRecord(Output &out, int id) {
 	int i = out.leftIndex;
 	int j = out.rightIndex-1;
 	// reverse complement. 
-	for ( ; i < out.rightIndex; ++i, --j) {
+	for ( ; i < (int)out.rightIndex; ++i, --j) {
 	  char c = f->dna.at(j);
 	  if (c=='A') {
 	    c = 'T';
@@ -766,7 +767,7 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 	unsigned char orientation = matchTypes[n];
 
 
-#if 0
+#if DEBUG
 	if (orientation < MOTIF) 
 	  cerr << "Read offset: " << j << " read # " << 
 	    a << " Str index " << strIndex << " Orientation " << (unsigned)orientation << endl;

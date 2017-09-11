@@ -949,7 +949,7 @@ findMatchesOneThread() {
   delete [] matchIds;
   delete [] matchTypes;
 
-  printReports(opt.reportOut, matches[0], opt.minPrint,opt.noReverseComplement);
+  //  printReports(opt.reportOut, matches[0], opt.minPrint,opt.noReverseComplement);
 }
 
 
@@ -1481,7 +1481,7 @@ main(int argc, char **argv) {
       }
 
       threads.clear();
-      printReportsMT(opt.reportOut);
+      //      printReportsMT(opt.reportOut);
 #endif
 
     }
@@ -1523,7 +1523,7 @@ main(int argc, char **argv) {
       }
 
       threads.clear();
-      printReportsMT(opt.reportOut);
+      //      printReportsMT(opt.reportOut);
 #endif
 
     }
@@ -1547,6 +1547,9 @@ main(int argc, char **argv) {
 #endif
   }
 #endif
+
+  // changed s.t. 1 report is created for all inputs 
+  printReportsMT(opt.reportOut);
 
   if (opt.out != opt.reportOut)
     fclose(opt.reportOut);

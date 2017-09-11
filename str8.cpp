@@ -1118,7 +1118,6 @@ main(int argc, char **argv) {
     in.close();
   }
 
-
   // if no fastq files are given then check stdin
   if (argc == start)  {
 

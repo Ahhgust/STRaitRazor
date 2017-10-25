@@ -2,15 +2,15 @@
 
 ### Documentation
 
-Quick and dirty start: (no support for compressed files, not a very sustainable way to do research)
+Quick and dirty start: (no support for compressed files, not a very sustainable way to do research) <br>
 Windows users:<br>
-Make a directory.
-Download str8rzr. To do this, click on  "Clone or download" on this site, and select Download ZIP.
-Put str8rzr.exe, batchCstr8.bat, the appropriate config file (Forenseq.config), and all fastq files into this directory.
-Double-click on batchCstr8.bat
-(and if windows "protects you", say run anyways)
+Make a directory.<br>
+Download str8rzr. To do this, click on  "Clone or download" on this site, and select Download ZIP. <br>
+Put str8rzr.exe, batchCstr8.bat, the appropriate config file (Forenseq.config), and all fastq files into this directory.<br>
+Double-click on batchCstr8.bat<br>
+(and if windows "protects you", say run anyways)<br>
 
-This will make a directory that corresponds to each fastq file. The summarised data are in the allsequences.txt file, which is encoded in plain text (uncompressed).
+This will make a directory that corresponds to each fastq file. The summarised data are in the allsequences.txt file, which is encoded in plain text (uncompressed).<br>
 <br>
 To make sense of these data, please use the Excel-based workbooks developed by Jonathan King!
 Here's a link to a V3 compatible workbook.
@@ -23,11 +23,11 @@ as appropriate. You can also change the config file (to, say, the powerseq).
 
 To make str8rzr work with compressed files, you'll need to follow the instructions below.
 
-*known issues*
+*known issues*<br>
 There's been one computer architecture (windows 7 + Xeon processor) that's caused some issues with the str8rzr.exe executable. In this case, str8rzr would occassionally crash, and I had to recompile it for that computer (and since then it's been fine). Please let me know if you experience problems-- especially crashes-- it'll let me further diagnose the exact problems therein.
 
-Less quick, but much better start:
-Windows users:
+Less quick, but much better start:<br>
+Windows users:<br>
 First, make a bin. Bin's are special directories that contain executable (typically binary) files. <br>
 You can do this by making a folder called "bin" in your C: drive (or really, any place else you like, just replace <br>
 the word C:\bin with whatever path you chose to use.). *be careful not to overwrite any other directory called "bin" when you do this!*<br> 

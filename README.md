@@ -2,11 +2,88 @@
 
 ### Documentation
 
+Quick and dirty start: (no support for compressed files, not a very sustainable way to do research)
+Windows users:<br>
+Make a directory.
+Download str8rzr. To do this, click on  "Clone or download" on this site, and select Download ZIP.
+Put str8rzr.exe, batchCstr8.bat, the appropriate config file (Forenseq.config), and all fastq files into this directory.
+Double-click on batchCstr8.bat
+(and if windows "protects you", say run anyways)
 
-Getting started:
+This will make a directory that corresponds to each fastq file. The summarised data are in the allsequences.txt file, which is encoded in plain text (uncompressed).
+<br>
+To make sense of these data, please use the Excel-based workbooks developed by Jonathan King!
+Here's a link to a V3 compatible workbook.
+https://www.dropbox.com/s/t3n0d2h6od0qek2/STRait%20Razor%20Analysis%20v3.xlsm?dl=1
+And here's a link to the manual (originally designed for previous versions of strait razor, but it all translates to v3).
+https://www.unthsc.edu/graduate-school-of-biomedical-sciences/wp-content/uploads/sites/13/STRait-Razor-Analysis-Manual.pdf
+
+The batch script (batchCstr8.bat) encodes information on the number of cores that it uses. You can make it use less or more
+as appropriate. You can also change the config file (to, say, the powerseq).
+
+To make str8rzr work with compressed files, you'll need to follow the instructions below.
+
+*known issues*
+There's been one computer architecture (windows 7 + Xeon processor) that's caused some issues with the str8rzr.exe executable. In this case, str8rzr would occassionally crash, and I had to recompile it for that computer (and since then it's been fine). Please let me know if you experience problems-- especially crashes-- it'll let me further diagnose the exact problems therein.
+
+Less quick, but much better start:
+Windows users:
+First, make a bin. Bin's are special directories that contain executable (typically binary) files. <br>
+You can do this by making a folder called "bin" in your C: drive (or really, any place else you like, just replace <br>
+the word C:\bin with whatever path you chose to use.). *be careful not to overwrite any other directory called "bin" when you do this!*<br> 
+Make a bin by going to: This PC, double clicking on the C: drive, and typing ctrl+shift+n or by right-clicking over the whitespace, and selecting New->Folder<br>
+Change the name of the directory from "New folder" to bin <br>
+<br>
+Second, download 7zip from here or elsewhere: http://www.7-zip.org/download.html <br>
+Install the 7zip application.
+Go to where it was installed (e.g., C:\Program Files\7-Zip), copy the 7z program (ctrl+c), and paste it (ctrl+v) into your bin (C:\bin) <br>
+<br>
+Third, modify your PATH. Your PATH has a bunch of directories in it that contain programs that you'd like to run. <br>
+We're going to add your bin (C:\bin) to you path. Lots of sites on the internet will tell you how to do this. Here's a link to one.
+https://www.howtogeek.com/118594/how-to-edit-your-system-path-for-easy-command-line-access/
+<br>
+Fourth:
+Ensure that 7z was both installed and in your PATH. Open a command prompt (one way: click on the windows icon in the bottom left, and type cmd.exe). <br>
+type: *7z* <br>
+What should happen is you see a bunch of information about how to run 7zip.
+If you see a command like: '7z' is not recognized as an internal or external command, ... <br>
+this likely means you didn't configure your PATH correctly. It may also mean that 7zip failed to install (much less likely) <br>
+<br>
+Fifth: Make a directory for your config file. This file has the information needed to characterize your STR/SNPs.
+I'd suggest:
+C:\Analysis\Str8Configs <br>
+(making directories as needed) <br>
+Sixth:
+Download str8rzr. To do this, click on  "Clone or download" on this site, and select Download ZIP.
+Open up the zipped folder, and copy/move str8rzr.exe into your bin (C:\bin).
+Take the appropriate config file(s), and put that into your config folder (C:\Analysis\Str8Configs) <br>
+As of this writing, there are two officially supported config files: Forenseq.config and Powerseq.config <br>
+Seventh:
+Run str8rzr!
+Make a directory for doing analyses: Say, C:\Analysis\FOO
+(replace the word FOO with whatever you like)
+Put a bunch of fastq (.fq) files into FOO
+Put the batch script (batchCstr8.bat, downloaded from github) into the same directory.
+Edit the batch script: Change line 5 from:
+SET config="Forenseq.config" 
+to:
+SET config="C:\Analysis\Str8Configs\Forenseq.config"
+
+*double click on the batch script*
+
+This will run str8rzr.exe on every fastq file in the current directory. The fastqs can be uncompressed (.fastq) or compressed by gzip (.fastq.gz). It makes one folder for each file. The allsequences.txt file has all of the summarised STR/SNP data for that particular individual.
+
+To make sense of these data, please use the Excel-based workbooks developed by Jonathan King!
+Here's a link to a V3 compatible workbook.
+https://www.dropbox.com/s/t3n0d2h6od0qek2/STRait%20Razor%20Analysis%20v3.xlsm?dl=1
+And here's a link to the manual (originally designed for previous versions of strait razor, but it all translates to v3).
+https://www.unthsc.edu/graduate-school-of-biomedical-sciences/wp-content/uploads/sites/13/STRait-Razor-Analysis-Manual.pdf
+
+
+More detailed information on str8rzr!
+
 str8rzr is written in C/C++ with multithreading support using the pthreads library. This new release couples a new search strategy (see algorithm) coupled with a complete redesign of the code-base used to identify short tandem repeats (STRs). This code base is (ostensibly) portable, and has been rigorously tested in Windows, Mac, and Unix environments, though the excel workbooks used to analyze the STRs only work with Microsoft Excel and are unlikely to function in your typical linux installation (but see Wine; https://www.winehq.org/). 
 
-Quick start:
 Pick the pre-compiled binary version of str8rzr that is appropriate to your operating system (i.e., str8rzr.exe for windows, str8rzr_osX for mac-- note rename this to str8rzr for everything to function correctly, str8rzr for everything else), and run it as:
 
      	str8rzr -c configFile fastqfile > allsequences.txt

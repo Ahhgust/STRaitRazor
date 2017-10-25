@@ -4,10 +4,6 @@ SET straitrazor="str8rzr"
 SET numcores=1
 SET config="Forenseq.config"
 
-REM SET config="C:\Users\jlk0260\Dropbox\Public\Work\STRait Razor\STRaitRazorv3\Configs\PowerSeqv1.config"
-REM SET config="C:\Users\jlk0260\Dropbox\Public\Work\STRait Razor\STRaitRazorv3\Configs\MixtureIDv1.config"
-SET config="C:\Users\jlk0260\Dropbox\Public\Work\STRait Razor\STRaitRazorv3\Configs\ForenSeqv1.1.config"
-
 for %%f in (*.fastq) do (
   
 REM make directories iff necessary
@@ -22,6 +18,6 @@ for /r %%f in (*fastq.gz) do (
 	set var=%%~nf
 	set bn=!var:~0,-6!
 	mkdir !bn!\R1 2> NUL
-	zcat %%f | %straitrazor% -c %config% -p %numcores% > !bn!"\R1\allsequences.txt"
+	7z x -so %%f | %straitrazor% -c %config% -p %numcores% > !bn!"\R1\allsequences.txt"
 )
 

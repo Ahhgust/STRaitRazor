@@ -52,26 +52,33 @@ this likely means you didn't configure your PATH correctly. It may also mean tha
 Fifth: Make a directory for your config file. This file has the information needed to characterize your STR/SNPs.
 I'd suggest:
 C:\Analysis\Str8Configs <br>
-(making directories as needed) <br>
-Sixth:
+(making directories as needed) <br><br>
+Sixth:<br>
 Download str8rzr. To do this, click on  "Clone or download" on this site, and select Download ZIP.
 Open up the zipped folder, and copy/move str8rzr.exe into your bin (C:\bin).
 Take the appropriate config file(s), and put that into your config folder (C:\Analysis\Str8Configs) <br>
 As of this writing, there are two officially supported config files: Forenseq.config and Powerseq.config <br>
-Seventh:
+<br>Seventh:<br>
 Run str8rzr!
 Make a directory for doing analyses: Say, C:\Analysis\FOO
 (replace the word FOO with whatever you like)
 Put a bunch of fastq (.fq) files into FOO
 Put the batch script (batchCstr8.bat, downloaded from github) into the same directory.
-Edit the batch script: Change line 5 from:
-SET config="Forenseq.config" 
-to:
-SET config="C:\Analysis\Str8Configs\Forenseq.config"
+Edit the batch script: <br>Change line 5 from:
+SET config="Forenseq.config"<br> 
+to:<br>
+SET config="C:\Analysis\Str8Configs\Forenseq.config"<br>
 
 *double click on the batch script*
 
 This will run str8rzr.exe on every fastq file in the current directory. The fastqs can be uncompressed (.fastq) or compressed by gzip (.fastq.gz). It makes one folder for each file. The allsequences.txt file has all of the summarised STR/SNP data for that particular individual.
+
+<br>
+<br>
+This less quick start way is probably better than the quick and dirty (above). It allows for a single repository for config files. Note that when these change you'll need to use your own version control system to handle these differences, and update your .bat file accordingly.<br>
+I would recommend keeping a single (parental) .bat script, and then tweaking them as needed, and placing the batch script you used in the same directory as you did your research. <br>
+Also note, if you want to do more analyses within the same directory, you may want to move your fastq files into a separate directory (otherwise they'll be analyzed twice, which is perhaps not what you want).
+<br><br>
 
 To make sense of these data, please use the Excel-based workbooks developed by Jonathan King!
 Here's a link to a V3 compatible workbook. <br>

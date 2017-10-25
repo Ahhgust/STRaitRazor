@@ -82,6 +82,10 @@ https://www.unthsc.edu/graduate-school-of-biomedical-sciences/wp-content/uploads
 
 More detailed information on str8rzr!
 
+### New features! 
+The config files now support a single two-base IUPAC code per anchor sequence (e.g., R). Hopefully this will help w/ known SNPs in the anchors! <br>
+
+
 str8rzr is written in C/C++ with multithreading support using the pthreads library. This new release couples a new search strategy (see algorithm) coupled with a complete redesign of the code-base used to identify short tandem repeats (STRs). This code base is (ostensibly) portable, and has been rigorously tested in Windows, Mac, and Unix environments, though the excel workbooks used to analyze the STRs only work with Microsoft Excel and are unlikely to function in your typical linux installation (but see Wine; https://www.winehq.org/). 
 
 Pick the pre-compiled binary version of str8rzr that is appropriate to your operating system (i.e., str8rzr.exe for windows, str8rzr_osX for mac-- note rename this to str8rzr for everything to function correctly, str8rzr for everything else), and run it as:

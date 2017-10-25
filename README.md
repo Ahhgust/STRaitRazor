@@ -2,7 +2,7 @@
 
 ### Documentation
 
-Quick and dirty start: (no support for compressed files, not a very sustainable way to do research) <br>
+**Quick and dirty start** (no support for compressed files, not a very sustainable way to do research) <br>
 Windows users:<br>
 Make a directory.<br>
 Download str8rzr. To do this, click on  "Clone or download" on this site, and select Download ZIP. <br>
@@ -26,7 +26,7 @@ To make str8rzr work with compressed files, you'll need to follow the instructio
 *known issues*<br>
 There's been one computer architecture (windows 7 + Xeon processor) that's caused some issues with the str8rzr.exe executable. In this case, str8rzr would occassionally crash, and I had to recompile it for that computer (and since then it's been fine). Please let me know if you experience problems-- especially crashes-- it'll let me further diagnose the exact problems therein.
 
-Less quick, but much better start:<br>
+**Less quick, but much better start**<br>
 Windows users:<br>
 First, make a bin. Bin's are special directories that contain executable (typically binary) files. <br>
 You can do this by making a folder called "bin" in your C: drive (or really, any place else you like, just replace <br>

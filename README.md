@@ -75,7 +75,7 @@ This will run str8rzr.exe on every fastq file in the current directory. The fast
 
 <br>
 <br>
-This less quick start way is probably better than the quick and dirty (above). It allows for a single repository for config files. Note that when these change you'll need to use your own version control system to handle these differences, and update your .bat file accordingly.<br>
+This less quick start way is probably better than the quick and dirty (above). It allows for a single directory for your config files, which is helpful. Note that config files may change; you'll need to use your own version control system to handle these differences, and update your .bat file accordingly.<br>
 I would recommend keeping a single (parental) .bat script, and then tweaking them as needed, and placing the batch script you used in the same directory as you did your research. <br>
 Also note, if you want to do more analyses within the same directory, you may want to move your fastq files into a separate directory (otherwise they'll be analyzed twice, which is perhaps not what you want).
 <br><br>

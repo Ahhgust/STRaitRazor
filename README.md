@@ -88,6 +88,8 @@ More detailed information on str8rzr!
 
 ### New features! 
 The config files now support a single two-base IUPAC code per anchor sequence (e.g., R). Hopefully this will help w/ known SNPs in the anchors! <br>
+The anchor sequences can now optionally be reported in the allsequences.txt files! (option -i for Including the anchors) <br>
+
 <br>
 #### known issues<br>
 There's been one computer architecture (windows 7 + Xeon processor) that's caused some issues with the str8rzr.exe executable. In this case, str8rzr would occassionally crash, and I had to recompile it for that computer (and since then it's been fine). Please let me know if you experience problems-- especially crashes-- it'll let me further diagnose the exact problems therein.

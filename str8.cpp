@@ -70,6 +70,8 @@ struct Options {
   bool verbose;// prints out extra information
   bool help; // prints a helpful usage statement. default 0
   bool noReverseComplement; // turns of reverse-complementing markers inferred to be on the negative strand
+  bool includeAnchors;
+
   FILE *out; // the output file. default=stdout
   char *config; // required! This is the NAME of config file
   int numThreads;
@@ -256,8 +258,14 @@ printReports(FILE *stream, map< Report, pair <unsigned, unsigned>, CompareReport
     }
 
     // compute the STR nomenclature
-    period = ( (int)rep.hapLength- (int)(*c)[rep.strIndex].motifOffset)/ (int)(*c)[rep.strIndex].motifPeriod;
-    offset = ( (int)rep.hapLength-(int)(*c)[rep.strIndex].motifOffset) % (int)(*c)[rep.strIndex].motifPeriod;
+    if (opt.includeAnchors) {
+      // adjust the nomenclature to account for the inclusion of the anchor sequences in the haplotype.
+      period = ( (int)rep.hapLength- (int)(*c)[rep.strIndex].motifOffset - (int)(*c)[rep.strIndex].forwardLength - (int)(*c)[rep.strIndex].reverseLength )/ (int)(*c)[rep.strIndex].motifPeriod;
+      offset = ( (int)rep.hapLength-(int)(*c)[rep.strIndex].motifOffset- (int)(*c)[rep.strIndex].forwardLength - (int)(*c)[rep.strIndex].reverseLength ) % (int)(*c)[rep.strIndex].motifPeriod;
+    } else {
+      period = ( (int)rep.hapLength- (int)(*c)[rep.strIndex].motifOffset)/ (int)(*c)[rep.strIndex].motifPeriod;
+      offset = ( (int)rep.hapLength-(int)(*c)[rep.strIndex].motifOffset) % (int)(*c)[rep.strIndex].motifPeriod;
+    }
     if (offset) {
       fprintf(stream, "%s:%i.%i\t%u bases\t",  s.c_str(), period, offset,
 	     rep.hapLength);
@@ -613,8 +621,13 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 		  " rpsize " << rpMatches[i].size() << endl;
 #endif
 	      
-		if (fpMatches[i].back()  < rpMatches[i].front())
-		  makeRecord(dna, fpMatches[i].front(), rpMatches[i].back(), FORWARDFLANK, i, id);
+		if (fpMatches[i].back()  < rpMatches[i].front()) {
+		  if (opt.includeAnchors) 
+		    makeRecord(dna, fpMatches[i].front() - (*c)[i].forwardLength, rpMatches[i].back() + (*c)[i].reverseLength, FORWARDFLANK, i, id);
+		  else
+		    makeRecord(dna, fpMatches[i].front(), rpMatches[i].back(), FORWARDFLANK, i, id);
+		}
+
 	      }
 
 	    } else if (opt.verbose && rpMatches[i].size() < (*c)[i].reverseCount ) { // not enough matches for the second anchor
@@ -630,8 +643,12 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 		" rpsize " << rpMatches[i].size() << endl;
 #endif
 	      
-	      if (rrMatches[i].back() < frMatches[i].front() )
-		makeRecord(dna, rrMatches[i].front(), frMatches[i].back(), REVERSEFLANK, i, id);
+	      if (rrMatches[i].back() < frMatches[i].front() ) {
+		if (opt.includeAnchors)
+		  makeRecord(dna, rrMatches[i].front() - (*c)[i].reverseLength , frMatches[i].back()+(*c)[i].forwardLength, REVERSEFLANK, i, id);
+		else
+		  makeRecord(dna, rrMatches[i].front(), frMatches[i].back(), REVERSEFLANK, i, id);	      
+	      }
 	      
 	    } else if (opt.verbose && frMatches[i].size() < (*c)[i].forwardCount ) {
 	      ++biasCounts[id][i]; 
@@ -681,7 +698,8 @@ usage(char *arg0) {
   cerr << "Possible arguments:" << endl << endl << 
     "\t-h (help; causes this to be printed)" << endl <<
     "\t-n (no reverse complement-- this turns off the default behavior of reverse-complementing matches on the negative strand)" << endl <<
-    "\t-v (verbose ; prints out additional diagnostic information)" << endl << endl <<
+    "\t-v (verbose ; prints out additional diagnostic information)" << endl <<
+    "\t-i (Include anchors ; includes the Anchor sequences in the reported haplotypes)" << endl << endl <<
 
     "\t-a integer (default 1; the maximum Hamming distance used with anchor search. can only be 0, 1 or 2)" << endl <<
     "\t-m integer (default 0; the maximum Hamming distance used with motif search. can only be 0 or 1)" << endl <<
@@ -712,6 +730,7 @@ parseArgs(int argc, char **argv, Options &opt) {
   opt.numThreads=1;
   opt.useTrie=1;
   opt.type=NULL;
+  opt.includeAnchors=false;
   opt.motifDistance=0;
   opt.distance=1;
 
@@ -726,6 +745,8 @@ parseArgs(int argc, char **argv, Options &opt) {
 	opt.shortCircuit=1;
       } else if (argv[i][1] == 'v') {
 	opt.verbose=1;
+      } else if (argv[i][1] == 'i') {
+	opt.includeAnchors=true;
       } else if (argv[i][1] == 't') {
 	// filters the config file by type
 	++i;
@@ -839,7 +860,7 @@ parseArgs(int argc, char **argv, Options &opt) {
     errors=1;
   }
 
-  if (errors) 
+  if (errors || opt.help) 
     usage(argv[0]);
 
   return i;

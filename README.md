@@ -23,9 +23,6 @@ as appropriate. You can also change the config file (to, say, the powerseq).
 
 To make str8rzr work with compressed files, you'll need to follow the instructions below.
 
-*known issues*<br>
-There's been one computer architecture (windows 7 + Xeon processor) that's caused some issues with the str8rzr.exe executable. In this case, str8rzr would occassionally crash, and I had to recompile it for that computer (and since then it's been fine). Please let me know if you experience problems-- especially crashes-- it'll let me further diagnose the exact problems therein.
-
 **Less quick, but much better start**<br>
 Windows users:<br>
 First, make a bin. Bin's are special directories that contain executable (typically binary) files. <br>
@@ -91,6 +88,10 @@ More detailed information on str8rzr!
 
 ### New features! 
 The config files now support a single two-base IUPAC code per anchor sequence (e.g., R). Hopefully this will help w/ known SNPs in the anchors! <br>
+<br>
+#### known issues<br>
+There's been one computer architecture (windows 7 + Xeon processor) that's caused some issues with the str8rzr.exe executable. In this case, str8rzr would occassionally crash, and I had to recompile it for that computer (and since then it's been fine). Please let me know if you experience problems-- especially crashes-- it'll let me further diagnose the exact problems therein.
+
 
 
 str8rzr is written in C/C++ with multithreading support using the pthreads library. This new release couples a new search strategy (see algorithm) coupled with a complete redesign of the code-base used to identify short tandem repeats (STRs). This code base is (ostensibly) portable, and has been rigorously tested in Windows, Mac, and Unix environments, though the excel workbooks used to analyze the STRs only work with Microsoft Excel and are unlikely to function in your typical linux installation (but see Wine; https://www.winehq.org/). 

@@ -1,8 +1,12 @@
 @echo off
 REM Can put an absolute path to str8rzr here. or you can set your $PATH environmental variable to include the path of str8rzr
 SET straitrazor="str8rzr"
-SET numcores=4
+SET numcores=1
 SET config="Forenseq.config"
+
+REM SET config="C:\Users\jlk0260\Dropbox\Public\Work\STRait Razor\STRaitRazorv3\Configs\PowerSeqv1.config"
+REM SET config="C:\Users\jlk0260\Dropbox\Public\Work\STRait Razor\STRaitRazorv3\Configs\MixtureIDv1.config"
+SET config="C:\Users\jlk0260\Dropbox\Public\Work\STRait Razor\STRaitRazorv3\Configs\ForenSeqv1.1.config"
 
 for %%f in (*.fastq) do (
   

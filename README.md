@@ -13,10 +13,10 @@ Double-click on batchCstr8.bat<br>
 This will make a directory that corresponds to each fastq file. The summarised data are in the allsequences.txt file, which is encoded in plain text (uncompressed).<br>
 <br>
 To make sense of these data, please use the Excel-based workbooks developed by Jonathan King!
-Here's a link to a V3 compatible workbook.
-https://www.dropbox.com/s/t3n0d2h6od0qek2/STRait%20Razor%20Analysis%20v3.xlsm?dl=1
-And here's a link to the manual (originally designed for previous versions of strait razor, but it all translates to v3).
-https://www.unthsc.edu/graduate-school-of-biomedical-sciences/wp-content/uploads/sites/13/STRait-Razor-Analysis-Manual.pdf
+Here's a link to a V3 compatible workbook.<br>
+https://www.dropbox.com/s/t3n0d2h6od0qek2/STRait%20Razor%20Analysis%20v3.xlsm?dl=1 <br>
+And here's a link to the manual (originally designed for previous versions of strait razor, but it all translates to v3). <br>
+https://www.unthsc.edu/graduate-school-of-biomedical-sciences/wp-content/uploads/sites/13/STRait-Razor-Analysis-Manual.pdf <br>
 
 The batch script (batchCstr8.bat) encodes information on the number of cores that it uses. You can make it use less or more
 as appropriate. You can also change the config file (to, say, the powerseq).
@@ -74,10 +74,10 @@ SET config="C:\Analysis\Str8Configs\Forenseq.config"
 This will run str8rzr.exe on every fastq file in the current directory. The fastqs can be uncompressed (.fastq) or compressed by gzip (.fastq.gz). It makes one folder for each file. The allsequences.txt file has all of the summarised STR/SNP data for that particular individual.
 
 To make sense of these data, please use the Excel-based workbooks developed by Jonathan King!
-Here's a link to a V3 compatible workbook.
-https://www.dropbox.com/s/t3n0d2h6od0qek2/STRait%20Razor%20Analysis%20v3.xlsm?dl=1
-And here's a link to the manual (originally designed for previous versions of strait razor, but it all translates to v3).
-https://www.unthsc.edu/graduate-school-of-biomedical-sciences/wp-content/uploads/sites/13/STRait-Razor-Analysis-Manual.pdf
+Here's a link to a V3 compatible workbook. <br>
+https://www.dropbox.com/s/t3n0d2h6od0qek2/STRait%20Razor%20Analysis%20v3.xlsm?dl=1 <br>
+And here's a link to the manual (originally designed for previous versions of strait razor, but it all translates to v3). <br>
+https://www.unthsc.edu/graduate-school-of-biomedical-sciences/wp-content/uploads/sites/13/STRait-Razor-Analysis-Manual.pdf <br>
 
 
 More detailed information on str8rzr!

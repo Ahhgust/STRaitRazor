@@ -34,6 +34,7 @@ SOFTWARE.
 #include <fstream>
 #include <list>
 #include <cstring>
+#include <cctype>
 #include <limits.h>
 
 #include <sys/types.h>
@@ -53,7 +54,7 @@ SOFTWARE.
 #include "trie.h"
 
 // version of strait razor!
-const float VERSION_NUM = 3.0;
+const float VERSION_NUM = 3.01;
 
 using namespace std;
 
@@ -87,6 +88,7 @@ struct Options {
 struct Report {
   unsigned strIndex; // which haplotype
   binaryword *haplotype; // unique sequence between the flanks
+  bool nonstandardLetters; // are there nonstandard letters (outside of ste GATC)? If so, then binaryword is actually a char*
   int hapLength; // the length of *haplotype in CHARACTERS (ie, in the set {GATC}). ie, the number of bits*2 used in *haplotype
 };
 
@@ -111,16 +113,36 @@ struct CompareReport {
     else if (a.hapLength > b.hapLength)
       return false;
 
-    // compute the (min) length in binarywords of the two haplotypes
-    unsigned i, lengthInWords = ceil( min(a.hapLength, b.hapLength)/ (MAXWORD/2.0));
-    binaryword *b1 = a.haplotype;
-    binaryword *b2 = b.haplotype;
+    // one haplotype has nonstandard letters and the other does not.    
+    if (a.nonstandardLetters == false && b.nonstandardLetters==true)
+      return false;
+    else if (a.nonstandardLetters == true && b.nonstandardLetters==false)
+      return true;
 
-    for (i=0; i < lengthInWords; ++i, ++b1, ++b2) {
-      if (*b1 < *b2)
-	return true;
-      else if (*b1 > *b2)
-	return false;
+    if (a.nonstandardLetters==false) { // compare binary words
+
+    // compute the (min) length in binarywords of the two haplotypes
+      unsigned i, lengthInWords = ceil( min(a.hapLength, b.hapLength)/ (MAXWORD/2.0));
+      binaryword *b1 = a.haplotype;
+      binaryword *b2 = b.haplotype;
+      
+      for (i=0; i < lengthInWords; ++i, ++b1, ++b2) {
+	if (*b1 < *b2)
+	  return true;
+	else if (*b1 > *b2)
+	  return false;
+      }
+
+    } else { // compare char*s
+      char *b1 = (char*) a.haplotype;
+      char *b2 = (char*) b.haplotype;
+
+      for (int i=0; i < a.hapLength; ++i, ++b1, ++b2) {
+	if (*b1 < *b2)
+	  return true;
+	else if (*b1 > *b2)
+	  return false;
+      }
     }
 
     return false;
@@ -274,14 +296,19 @@ printReports(FILE *stream, map< Report, pair <unsigned, unsigned>, CompareReport
 	      rep.hapLength);
     }
 
-    stop = (rep.hapLength / (MAXWORD/2.0));
-    mod = rep.hapLength % (MAXWORD/2);
-    for (i=0; i < stop; ++i) 
-      printBinaryWord(stream, rep.haplotype[i], MAXWORD/2);
+    if (rep.nonstandardLetters==false) {
+      stop = (rep.hapLength / (MAXWORD/2.0));
+      mod = rep.hapLength % (MAXWORD/2);
+      for (i=0; i < stop; ++i) 
+	printBinaryWord(stream, rep.haplotype[i], MAXWORD/2);
+      
+      if (mod) 
+	printBinaryWord(stream, rep.haplotype[i], mod);
 
-    if (mod) 
-      printBinaryWord(stream, rep.haplotype[i], mod);
-
+    } else {
+      fprintf(stream, "%s", (char*)rep.haplotype);
+    }
+    
     if (noRC)
       fprintf(stream, "\t\t%u\n", it->second.first + it->second.second );
     else 
@@ -366,6 +393,10 @@ buffer(string mem[]) {
 
   while (getline(*currentInputStream, mem[i])) {
     getline(*currentInputStream, mem[i]); // read in the DNA string
+    // added by AW: Force to upper-case
+    for (char & c : mem[i])
+      c = toupper(c);
+
     getline(*currentInputStream, dummy); // the +
     getline(*currentInputStream, dummy); // the quality string (ignored)
     ++i;
@@ -388,6 +419,36 @@ buffer(string mem[]) {
   return 1;
 }
 
+/*
+  This reverse-complements *dna
+  it returns allocated memory!
+  and it does the rev-comp in a tolerant way (nonstandard characters are retained)
+  Note: 
+*/
+char *
+revcompCstring(const char *dna, int len) {
+  char *revcompd = new char[ len + 1 ];
+  revcompd[len]=0;
+  int j=len-1;
+  int i=0;
+  char c;
+  for ( ; i < len; ++i, --j) {
+    c = dna[j];
+    if (c=='A')
+      revcompd[i] = 'T';
+    else if (c=='T')
+      revcompd[i] = 'A';
+    else if (c=='G')
+      revcompd[i] = 'C';
+    else if (c=='C')
+      revcompd[i] = 'G';
+    else
+      revcompd[i] = c;
+
+  }
+  return revcompd;
+}
+
 
 /*
   This method takes in:
@@ -407,38 +468,68 @@ makeRecord(const char* dna, unsigned left, unsigned right, unsigned char orienta
 
   int len = (int) (right - left);
   int wordlen = ceil(len / (MAXWORD/2.0)); //number of binarywords to represent a haplotype
-  binaryword *t, *haplotype = new binaryword[ wordlen ];
-  t = haplotype;
-  unsigned mod = len % (MAXWORD/2);
-  unsigned numChars = MAXWORD/2;
 
-  for (int i=0; i < len; i += (MAXWORD/2), ++t) {
-    if (i + left + MAXWORD/2 > right) // don't read past the end of the array
-      numChars=mod;
-
-    *t = gatcToLong((char*)(&dna[i + left ]), numChars);
+  bool nonstandard=false;
+  const char *d = &(dna[left]);
+  for (int i = 0; i < len; ++i, ++d) {
+    if (*d != 'A' && *d != 'C' && *d != 'G' && *d != 'T') {
+      nonstandard=true;
+    }
   }
+
+  if (nonstandard) { // nonstandard letters are present (probably an N). Let's use the full ascii table.
+    char *hap;
+    if (opt.noReverseComplement== 0 && orientation==REVERSEFLANK) {
+      hap = revcompCstring(dna+left, len);
+    } else {
+      hap = new char[ len + 1 ];
+      strncpy(hap, dna+left, len);
+    }
+    hap[len]=0;
+
+    Report rep = {strIndex, (binaryword*) hap, true, len};
+    if (orientation==REVERSEFLANK) {
+      ++(matches[id][rep].first);
+    } else {
+      ++(matches[id][rep].second);
+    }
+
+  } else { // This reduces DNA into its 2-bit encoding (saving much space, and making lookup operations faster
+
+    binaryword *t, *haplotype = new binaryword[ wordlen ];
+    t = haplotype;
+    unsigned mod = len % (MAXWORD/2);
+    unsigned numChars = MAXWORD/2;
+    
+    for (int i=0; i < len; i += (MAXWORD/2), ++t) {
+      if (i + left + MAXWORD/2 > right) // don't read past the end of the array
+	numChars=mod;
+      
+      *t = gatcToLong((char*)(&dna[i + left ]), numChars);
+    }
+    
+
+    if (mod) { // is the sequence not a multple of 32?
+      --t;
+      *t = *t & ((binaryword)MAXBINARYWORD) << 2*((MAXWORD/2)-mod); // mask out the (right-most) character
+    }
+    
+    if (opt.noReverseComplement== 0 && orientation==REVERSEFLANK) {
+      binaryword *hap2 = new binaryword[ wordlen ];
+      reverseComplement(haplotype, hap2, len);
+      delete[] (haplotype);
+      haplotype=hap2;
+    }
+    Report rep = {strIndex, haplotype, false, len};
+    if (orientation==REVERSEFLANK) {
+      ++(matches[id][rep].first);
+    } else {
+      ++(matches[id][rep].second);
+    }
+  }
+
   
 
-  if (mod) { // is the sequence not a multple of 32?
-    --t;
-    *t = *t & ((binaryword)MAXBINARYWORD) << 2*((MAXWORD/2)-mod); // mask out the (right-most) character
-  }
-  
-  if (opt.noReverseComplement== 0 && orientation==REVERSEFLANK) {
-    binaryword *hap2 = new binaryword[ wordlen ];
-    reverseComplement(haplotype, hap2, len);
-    delete[] (haplotype);
-    haplotype=hap2;
-  }
-
-  Report rep = {strIndex, haplotype, len};
-  
-  if (orientation==REVERSEFLANK) {
-    ++(matches[id][rep].first);
-  } else {
-    ++(matches[id][rep].second);
-  }
   
   if (opt.verbose) {
     ++totalCounts[id][strIndex];

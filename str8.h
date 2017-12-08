@@ -42,5 +42,6 @@ void freeConfig(Config *c);
 // eg, AUTOSOMES
 vector<Config>* parseConfig(char *file, unsigned *numStrs, char *filt);
 
+char *revcompCstring(const char *dna, int len);
 
 #endif

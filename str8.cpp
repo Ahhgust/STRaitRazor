@@ -583,19 +583,18 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
       // if we dont' have a single match (forward or reverse complement of reverse
       // and there isn't enough sequence to get the smallest possible fragment out, then we're done
       if (! gotOne &&
-	  dnalen - j < (unsigned)minFrag)
-	break;
-
+          dnalen - j < (unsigned)minFrag)
+        break;
 
       unsigned numMatches = trie->findPrefixMatch((char*)(dna), maxLen, matchIds, matchTypes);
 
       for (unsigned n = 0; n < numMatches; ++n) {
-	unsigned strIndex = matchIds[n];
-	unsigned char orientation = matchTypes[n];
+        unsigned strIndex = matchIds[n];
+        unsigned char orientation = matchTypes[n];
 
 
 #if DEBUG
-	if (orientation < MOTIF) 
+        //	if (orientation < MOTIF) 
 	  cerr << "Read offset: " << j << " read # " << 
 	    a << " Str index " << strIndex << " Orientation " << (unsigned)orientation << endl;
 #endif
@@ -613,14 +612,15 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 
 
 	if (orientation == MOTIF || orientation == MOTIF_RC) { // common case
+
 	  if (lastHitRecord[ strIndex ] == (unsigned) a &&  ! validMotif[strIndex]) {  // we have at least one flank found for this locus for this read
 	    // motifs! (currently the strand is ignored, as per the previous str8razor
+
 
 	    // we have at least one (valid) forward flank
 	    // and not enough reverse flanks
 	    if (fpMatches[strIndex].size() > 0 && 
-		rpMatches[strIndex].size() < (*c)[strIndex].reverseCount) {
-	      
+          rpMatches[strIndex].size() < (*c)[strIndex].reverseCount) {
 	      validMotif[strIndex]=1;
 	      // match is on the negative strand
 	    } else if (rrMatches[strIndex].size() > 0 && 
@@ -695,58 +695,61 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
     } // done reading read
     dna = records[a].c_str(); // reset the pointer
     
+    
     if (gotOne) { // is there at least one record
       for (unsigned i = 0; i < numStrs; ++i) {
-	if (lastHitRecord[i]== (unsigned) a 
-	    && validMotif[i]
-	    ) { // this STR was found for this read
-	  // positive strand match
-	  if (fpMatches[i].size() == (*c)[i].forwardCount) {
-	    if (rpMatches[i].size() == (*c)[i].reverseCount ) {
-	      // ensure that if it matches once on the positive strand, it doesn't also match on the negative strand (that both if statements below cannot be true)
-	      if ( rrMatches[i].size() != (*c)[i].reverseCount  ||
-		   frMatches[i].size() != (*c)[i].forwardCount ) {
 
+        if (lastHitRecord[i]== (unsigned) a 
+            && validMotif[i]
+            ) { // this STR was found for this read
+          // positive strand match
+
+          if (fpMatches[i].size() == (*c)[i].forwardCount) {
+            if (rpMatches[i].size() == (*c)[i].reverseCount ) {
+              // ensure that if it matches once on the positive strand, it doesn't also match on the negative strand (that both if statements below cannot be true)
+              if ( rrMatches[i].size() != (*c)[i].reverseCount  ||
+                   frMatches[i].size() != (*c)[i].forwardCount ) {
+                
 #if DEBUG
-		cerr << c->at(i).locusName << " STR on forward strand " << i << " fpsize " << fpMatches[i].size() <<
-		  " rpsize " << rpMatches[i].size() << endl;
+                cerr << c->at(i).locusName << " STR on forward strand " << i << " fpsize " << fpMatches[i].size() <<
+                  " rpsize " << rpMatches[i].size() << endl;
 #endif
 	      
-		if (fpMatches[i].back()  < rpMatches[i].front()) {
-		  if (opt.includeAnchors) 
-		    makeRecord(dna, fpMatches[i].front() - (*c)[i].forwardLength, rpMatches[i].back() + (*c)[i].reverseLength, FORWARDFLANK, i, id);
-		  else
-		    makeRecord(dna, fpMatches[i].front(), rpMatches[i].back(), FORWARDFLANK, i, id);
-		}
+                if (fpMatches[i].back()  < rpMatches[i].front()) {
+                  if (opt.includeAnchors) 
+                    makeRecord(dna, fpMatches[i].front() - (*c)[i].forwardLength, rpMatches[i].back() + (*c)[i].reverseLength, FORWARDFLANK, i, id);
+                  else
+                    makeRecord(dna, fpMatches[i].front(), rpMatches[i].back(), FORWARDFLANK, i, id);
+                }
 
-	      }
+              }
 
-	    } else if (opt.verbose && rpMatches[i].size() < (*c)[i].reverseCount ) { // not enough matches for the second anchor
-	      ++biasCounts[id][i];
-	    }
-	    // negative strand match
-	  } 
-	  if ( rrMatches[i].size() == (*c)[i].reverseCount) {
-	    if ( frMatches[i].size() == (*c)[i].forwardCount ) {
-	      
+            } else if (opt.verbose && rpMatches[i].size() < (*c)[i].reverseCount ) { // not enough matches for the second anchor
+              ++biasCounts[id][i];
+            }
+            // negative strand match
+          }
+          if ( rrMatches[i].size() == (*c)[i].reverseCount) {
+            if ( frMatches[i].size() == (*c)[i].forwardCount ) {
+              
 #if DEBUG
-	      cerr << c->at(i).locusName << " STR on reverse strand " << i << " fpsize " << fpMatches[i].size() <<
-		" rpsize " << rpMatches[i].size() << endl;
+              cerr << c->at(i).locusName << " STR on reverse strand " << i << " fpsize " << fpMatches[i].size() <<
+                " rpsize " << rpMatches[i].size() << endl;
 #endif
 	      
-	      if (rrMatches[i].back() < frMatches[i].front() ) {
-		if (opt.includeAnchors)
-		  makeRecord(dna, rrMatches[i].front() - (*c)[i].reverseLength , frMatches[i].back()+(*c)[i].forwardLength, REVERSEFLANK, i, id);
-		else
-		  makeRecord(dna, rrMatches[i].front(), frMatches[i].back(), REVERSEFLANK, i, id);	      
-	      }
-	      
-	    } else if (opt.verbose && frMatches[i].size() < (*c)[i].forwardCount ) {
-	      ++biasCounts[id][i]; 
-	    }
-	    
-	  }
-	}
+              if (rrMatches[i].back() < frMatches[i].front() ) {
+                if (opt.includeAnchors)
+                  makeRecord(dna, rrMatches[i].front() - (*c)[i].reverseLength , frMatches[i].back()+(*c)[i].forwardLength, REVERSEFLANK, i, id);
+                else
+                  makeRecord(dna, rrMatches[i].front(), frMatches[i].back(), REVERSEFLANK, i, id);	      
+              }
+              
+            } else if (opt.verbose && frMatches[i].size() < (*c)[i].forwardCount ) {
+              ++biasCounts[id][i]; 
+            }
+            
+          }
+        }
       }//for
     } // gotone
   }
@@ -1131,8 +1134,9 @@ main(int argc, char **argv) {
 
 
   // compute minima and maxima for the STRs we're looking for
-  minLen = min((*c)[0].forwardLength,   (*c)[0].reverseLength);
-  maxLen = max(  (*c)[0].forwardLength,   (*c)[0].reverseLength);
+  minLen = min((*c)[0].forwardLength,  (*c)[0].reverseLength);
+  maxLen = max(  (*c)[0].forwardLength,
+                 max( (*c)[0].reverseLength, (*c)[0].motifLength));
   // assumes that the motif nomenclature cannot be negative
   minFrag =   (*c)[0].forwardLength +   (*c)[0].reverseLength + (*c)[0].motifOffset;
   for (i=1; i < numStrs; ++i) {
@@ -1149,6 +1153,9 @@ main(int argc, char **argv) {
     if ((int)  (*c)[i].reverseLength > maxLen)
       maxLen =   (*c)[i].reverseLength;
 
+    if ((int)  (*c)[i].motifLength > maxLen)
+      maxLen =   (*c)[i].motifLength;
+
 
     int fragLen =   (*c)[i].forwardLength +   (*c)[i].reverseLength + (*c)[i].motifOffset;
     if (fragLen < minFrag)
@@ -1156,10 +1163,9 @@ main(int argc, char **argv) {
   }
 
 
-
   trie = new Trie;
   trie->makeTrieFromConfig(c, numStrs, opt.distance, opt.motifDistance);
-
+    
 
 #ifndef NOTHREADS
   if (opt.numThreads > 1) {

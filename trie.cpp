@@ -249,13 +249,12 @@ Trie::addWord(const char *w, unsigned wordLen, unsigned id, unsigned char type) 
     // ensure that each type/id pair is only added once    
     for (i=0; i < parent->id->size(); ++i) {
       if (parent->id->at(i) == id &&
-	  parent->type->at(i) == type)
-	return;
+          parent->type->at(i) == type)
+        return;
     }
 
     parent->id->push_back(id);
     parent->type->push_back(type);    
-
 
 
   }
@@ -282,23 +281,23 @@ Trie::addWordRC(const char *w, unsigned wordLen, unsigned id, unsigned char type
 
     if (c == 'A') {
       if (parent->t == NULL) {
-	parent->t = ++mem;
+        parent->t = ++mem;
       }
       child = parent->t;
 
     } else if (c == 'C') {
       if (parent->g == NULL) {
-	parent->g = ++mem;
+        parent->g = ++mem;
       }
       child = parent->g;
     } else if (c == 'G') {
       if (parent->c == NULL) {
-	parent->c = ++mem;
+        parent->c = ++mem;
       }
       child = parent->c;
     } else {
       if (parent->a == NULL) {
-	parent->a = ++mem;
+        parent->a = ++mem;
       }
       child = parent->a;
     }
@@ -315,8 +314,8 @@ Trie::addWordRC(const char *w, unsigned wordLen, unsigned id, unsigned char type
     // ensure that each type/id pair is only added once    
     for (i=0; i < parent->id->size(); ++i) {
       if (parent->id->at(i) == id &&
-	  parent->type->at(i) == type)
-	return;
+          parent->type->at(i) == type)
+        return;
     }
 
     parent->id->push_back(id);
@@ -368,24 +367,24 @@ Trie::addPermutations(string w, unsigned wordLen, unsigned id, unsigned char typ
       letter = w[i];
       
       if (letter != 'A') {
-	w[i] = 'A';
-	addWord(w.c_str(), wordLen, id, type1);
-	addWordRC(w.c_str(), wordLen, id, type2);
+        w[i] = 'A';
+        addWord(w.c_str(), wordLen, id, type1);
+        addWordRC(w.c_str(), wordLen, id, type2);
       }
       if (letter != 'C') {
-	w[i] = 'C';
-	addWord(w.c_str(), wordLen, id, type1);
-	addWordRC(w.c_str(), wordLen, id, type2);
+        w[i] = 'C';
+        addWord(w.c_str(), wordLen, id, type1);
+        addWordRC(w.c_str(), wordLen, id, type2);
       }
       if (letter != 'G') {
-	w[i] = 'G';
-	addWord(w.c_str(), wordLen, id, type1);
-	addWordRC(w.c_str(), wordLen, id, type2);
+        w[i] = 'G';
+        addWord(w.c_str(), wordLen, id, type1);
+        addWordRC(w.c_str(), wordLen, id, type2);
       }
       if (letter != 'T') {
-	w[i] = 'T';
-	addWord(w.c_str(), wordLen, id, type1);
-	addWordRC(w.c_str(), wordLen, id, type2);
+        w[i] = 'T';
+        addWord(w.c_str(), wordLen, id, type1);
+        addWordRC(w.c_str(), wordLen, id, type2);
       }
       // undo the substitution at base position i
       w[i] = letter;
@@ -400,26 +399,27 @@ Trie::addPermutations(string w, unsigned wordLen, unsigned id, unsigned char typ
     for (i=0; i < wordLen; ++i) {
       l1 = w[i];
       for (j=i+1; j < wordLen; ++j) {
-	l2 = w[j];
+        l2 = w[j];
 
 	// every single pair of base pair changes
-	unsigned char a, b;
-	for (a=0; a < 4; ++a) {
-	  for (b=0; b < 4; ++b) {
-	    if (LETTERS[a] != l1 && LETTERS[b] != l2) { // make sure what we're adding is unique
-	      w[i] = LETTERS[a];
-	      w[j] = LETTERS[b];
+        unsigned char a, b;
+        for (a=0; a < 4; ++a) {
+          for (b=0; b < 4; ++b) {
+            if (LETTERS[a] != l1 && LETTERS[b] != l2) { // make sure what we're adding is unique
+              w[i] = LETTERS[a];
+              w[j] = LETTERS[b];
 
-	      addWord(w.c_str(), wordLen, id, type1);
-	      addWordRC(w.c_str(), wordLen, id, type2);
-	      w[i] = l1;
-	      w[j] = l2;
-	    }
-	  }
-	}
+              addWord(w.c_str(), wordLen, id, type1);
+              addWordRC(w.c_str(), wordLen, id, type2);
+              w[i] = l1;
+              w[j] = l2;
+
+            }
+          }
+        }
       }
     }
-
+    
 
   }
 
@@ -493,14 +493,14 @@ Trie::makeTrieFromConfig(vector<Config> *c, unsigned numStrs, unsigned char dist
     unsigned nfAmbig=0;
     for (unsigned j = 0; j < (*c)[i].forwardLength; ++j, ++s) { // adjust the memory for IUPAC codes (double the memory for each IUPAC code)
       if ( IUPAC[(int)*s][0] != 0) {
-	nf = nf + nf;
-	++nfAmbig;
+        nf = nf + nf;
+        ++nfAmbig;
       }
     }
 
     if (nfAmbig > 1) {
       cerr << endl << "At most 1 ambiguity code is supported per anchor." << endl 
-	   << "Problem with locus: " << (*c)[i].locusName << " Anchor " << (*c)[i].forwardFlank << endl << endl;
+           << "Problem with locus: " << (*c)[i].locusName << " Anchor " << (*c)[i].forwardFlank << endl << endl;
       exit(EXIT_FAILURE);
     }
 
@@ -508,8 +508,8 @@ Trie::makeTrieFromConfig(vector<Config> *c, unsigned numStrs, unsigned char dist
     unsigned nrAmbig=0;
     for (unsigned j = 0; j < (*c)[i].reverseLength; ++j, ++s) { // adjust the memory for IUPAC codes (double the memory for each IUPAC code)
       if ( IUPAC[(int)*s][0] != 0) {
-	nr = nr + nr;
-	++nrAmbig;
+        nr = nr + nr;
+        ++nrAmbig;
       }
     }
 
@@ -517,7 +517,7 @@ Trie::makeTrieFromConfig(vector<Config> *c, unsigned numStrs, unsigned char dist
 
     if (nrAmbig > 1) {
       cerr << endl << "At most 1 ambiguity code is supported per anchor." << endl <<
-	"Problem with locus: " << (*c)[i].locusName << " Anchor " << (*c)[i].reverseFlank << endl << endl;
+        "Problem with locus: " << (*c)[i].locusName << " Anchor " << (*c)[i].reverseFlank << endl << endl;
       exit(EXIT_FAILURE);
     }
     
@@ -529,8 +529,8 @@ Trie::makeTrieFromConfig(vector<Config> *c, unsigned numStrs, unsigned char dist
       // got lazy with this one; wolfram alpha was used to simplify the sum:
       // sum i=1 to N (i)(i-1)
       // which is the (worst-case) memory needed to add a word of length N and all 2-permutations of it
-      memNeeded += (nfAmbig*nfAmbig)*6*((*c)[i].forwardLength)*((*c)[i].forwardLength+1)*((*c)[i].forwardLength+2);
-      memNeeded += (nrAmbig*nrAmbig)*6*((*c)[i].reverseLength)*((*c)[i].reverseLength+1)*((*c)[i].reverseLength-1);
+      memNeeded += (nfAmbig*nfAmbig+1)*6*((*c)[i].forwardLength)*((*c)[i].forwardLength+1)*((*c)[i].forwardLength+2);
+      memNeeded += (nrAmbig*nrAmbig+1)*6*((*c)[i].reverseLength)*((*c)[i].reverseLength+1)*((*c)[i].reverseLength-1);
     }
 
     memNeeded += ((*c)[i].motifLength+1) *2; // the motifs are also added
@@ -542,50 +542,50 @@ Trie::makeTrieFromConfig(vector<Config> *c, unsigned numStrs, unsigned char dist
   initMem(memNeeded);
 
   for (i=0; i < numStrs; ++i) {
-    // add all permutations for the forward flank (and its RC)
 
     int numAmbig=0;
     string s =  (*c)[i].forwardFlank;
     for (unsigned j= 0; j < (*c)[i].forwardLength; ++j) {
       if ( IUPAC[(int)s.at(j)][0] != 0) {
 
-	int iupac = (int)s.at(j);
+        int iupac = (int)s.at(j);
 
-	s[j] = IUPAC[ iupac ][0]; // overwrite the ambiguity code with the first form, then add to trie
-	addPermutations(s, (*c)[i].forwardLength, i, (unsigned char) FORWARDFLANK,
-		    (unsigned char) FORWARDFLANK_RC, distance);
-
-
-	s[j] = IUPAC[ iupac ][1]; // overwrite the ambiguity code with the second form, then add to trie
-	addPermutations(s, (*c)[i].forwardLength, i, (unsigned char) FORWARDFLANK,
-		    (unsigned char) FORWARDFLANK_RC, distance);
-
-	++numAmbig;
-	break;
+        s[j] = IUPAC[ iupac ][0]; // overwrite the ambiguity code with the first form, then add to trie
+        addPermutations(s, (*c)[i].forwardLength, i, (unsigned char) FORWARDFLANK,
+                        (unsigned char) FORWARDFLANK_RC, distance);
+        
+        
+        s[j] = IUPAC[ iupac ][1]; // overwrite the ambiguity code with the second form, then add to trie
+        addPermutations(s, (*c)[i].forwardLength, i, (unsigned char) FORWARDFLANK,
+                        (unsigned char) FORWARDFLANK_RC, distance);
+        
+        ++numAmbig;
+        break;
       }
     }
+    
+    if (numAmbig==0) {
 
-    if (numAmbig==0)
       addPermutations((*c)[i].forwardFlank, (*c)[i].forwardLength, i, (unsigned char) FORWARDFLANK,
-		      (unsigned char) FORWARDFLANK_RC, distance);
-
+                      (unsigned char) FORWARDFLANK_RC, distance);
+    }
     numAmbig=0;
     s =  (*c)[i].reverseFlank;
     for (unsigned j= 0; j < (*c)[i].reverseLength; ++j) {
       if ( IUPAC[(int)s.at(j)][0] != 0) {
 
-	int iupac = (int)s.at(j);
+        int iupac = (int)s.at(j);
 
-	s[j] = IUPAC[ iupac ][0]; // overwrite the ambiguity code with the first form, then add to trie
-	addPermutations(s, (*c)[i].reverseLength, i, (unsigned char) REVERSEFLANK, 
-		      (unsigned char) REVERSEFLANK_RC, distance);
-
-	s[j] = IUPAC[ iupac ][1]; // overwrite the ambiguity code with the second form, then add to trie
-	addPermutations(s, (*c)[i].reverseLength, i, (unsigned char) REVERSEFLANK, 
-		      (unsigned char) REVERSEFLANK_RC, distance);
-	
-	++numAmbig;
-	break;
+        s[j] = IUPAC[ iupac ][0]; // overwrite the ambiguity code with the first form, then add to trie
+        addPermutations(s, (*c)[i].reverseLength, i, (unsigned char) REVERSEFLANK, 
+                        (unsigned char) REVERSEFLANK_RC, distance);
+        
+        s[j] = IUPAC[ iupac ][1]; // overwrite the ambiguity code with the second form, then add to trie
+        addPermutations(s, (*c)[i].reverseLength, i, (unsigned char) REVERSEFLANK, 
+                        (unsigned char) REVERSEFLANK_RC, distance);
+        
+        ++numAmbig;
+        break;
       }
     }
 
@@ -593,8 +593,8 @@ Trie::makeTrieFromConfig(vector<Config> *c, unsigned numStrs, unsigned char dist
     // and the reverse flank (and its RC)
     if (numAmbig==0)
       addPermutations((*c)[i].reverseFlank, (*c)[i].reverseLength, i, (unsigned char) REVERSEFLANK, 
-		      (unsigned char) REVERSEFLANK_RC, distance);
-
+                      (unsigned char) REVERSEFLANK_RC, distance);
+    
     if (motifDistance==0) {
     // add the motif (no degeneracy in this)
       addWord((*c)[i].strMotif.c_str(), (*c)[i].motifLength, i, MOTIF);

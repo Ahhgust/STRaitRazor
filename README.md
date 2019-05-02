@@ -192,6 +192,7 @@ STRait Razor v3.0 supports the following flags: <br>
        -c configFile (This is REQUIRED). A configuration file (as described above.)
        -n (No reverse complementing-- str8rzr automically reverse complements haplotypes found on the negative strand to the positive strand. Really, to the same strand as specified in the config file)
        -v (Verbose ; this prints out some additional summary statistics that pertain to incomplete haplotype matches)
+       -i (Include anchors ; includes the anchor sequences in the reported haplotypes)
        -a (Anchor Hamming distance. This is the (maximum) Hamming distance allowed between a substring of a read and the anchor sequence as to what constitutes a match. 1 is the default. Setting to 0 and 2 is allowed, but not recommended. being too strict (0) will cause allelic dropout in individuals with SNPs in the anchors, and setting it to 2 will take longer to build the trie, and cause false matches, and in turn cause reads to be dropped. e.g., if anchor should be present only once, setting this to two may (and will) cause reads to falsely "match" anchors to two locations, which in turn causes the intervenfging haplotype to be dropped.)
        -m (Motif Hamming distance. default=0, 1 is allowed. This hasn't been as thoroughly vetted as the -a flag, but setting this to 0 works well in practice).
        -p numProcessors (default=1. Can be any positive integer, but setting it equal to the number of cores on your system is probably a good idea. This turns on multiple threads)

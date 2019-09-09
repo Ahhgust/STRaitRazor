@@ -32,7 +32,7 @@ while (<IN>) {
         print $_ , "\n";
         for (1..3) {
             $_ = <IN>;
-            print $_;
+            print $_ if defined $_;
         }
     }
 

@@ -17,7 +17,9 @@ while(<IN>){
     $h{$_}=1; # read the header
     for (1..3) { # skip the rest
         $_ = <IN>;
+
     }
+
 }
 
 
@@ -33,6 +35,10 @@ while (<IN>) {
         for (1..3) {
             $_ = <IN>;
             print $_ if defined $_;
+        }
+    } else {
+        for (1..3) {
+            $_ = <IN>;
         }
     }
 

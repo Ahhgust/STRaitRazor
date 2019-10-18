@@ -18,7 +18,7 @@ do
     bn=`basename $fq .fastq`
     mkdir -p $bn/R1
     if [ ! -d $bn/R1 ]; then
-        echo "Failed to make directory: $bn\R1"
+        echo "Failed to make directory: $bn/R1"
         exit
     fi  
     ./$str8 -c $config -p $numcores $fq > "$bn/R1/allsequences.txt"

@@ -176,7 +176,7 @@ parseConfig(char *file, unsigned *numStrs, char *filt) {
     getline(ss, s, SEP);
     istringstream(s)  >>   conf.motifOffset;
 
-    if (conf.motifPeriod < 1 || conf.motifOffset < 1) {
+    if (conf.motifPeriod < 1) {
       cerr << "Locus " << conf.locusName << " has illegal spacing characteristics " <<
 	conf.motifPeriod << "\t" << conf.motifOffset  << endl;
 	exit(EXIT_FAILURE);

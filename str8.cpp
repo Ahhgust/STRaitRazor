@@ -64,7 +64,6 @@ using namespace std;
 unsigned LASTREC = UINT_MAX;
 
 
-
 // for the command-line options
 struct Options {
   unsigned minPrint; // haplotype counts < minPrint will not be printed. default 1
@@ -73,7 +72,7 @@ struct Options {
   bool help; // prints a helpful usage statement. default 0
   bool noReverseComplement; // turns of reverse-complementing markers inferred to be on the negative strand
   bool includeAnchors;
-  bool useQuality;
+  char useQuality;
   
   FILE *out; // the output file. default=stdout
   char *config; // required! This is the NAME of config file
@@ -197,7 +196,16 @@ double QUALITY_TO_ERRORPROB[MAXQVAL];
 // Phred-quality -33 is standard. just in case, this is the constant used.
 #define PHREDMINUS 33
 
-bool USE_QVALS = false;
+// different error models...
+#define NO_QUALITY 0
+
+// uses getProbCorrect function
+#define EDGAR_QUALITY 1
+
+// uses getExpectProb function
+#define EXPECT_QUALITY 2
+
+char USE_QVALS = NO_QUALITY;
 
 
 // information about the strs from the file:
@@ -229,15 +237,31 @@ Matches *matches;
 // (ie, the probabilty that a given base with quality q is wrong)
 // in practice qvals < 100; I maxed
 void
-initQvalLUT() {
+initQvalLUT(char qtype) {
   unsigned i;
 
-  // standard quality to probability (of error) computation
-  // see https://en.wikipedia.org/wiki/Phred_quality_score
-  // we do this A LOT
-  // so let's make a LUT
-  for(i = 0; i < MAXQVAL; ++i) {
-    QUALITY_TO_ERRORPROB[i] = pow(10, i/-10.0);
+
+  if (qtype == EDGAR_QUALITY) {
+    // standard quality to probability (of error) computation
+    // see https://en.wikipedia.org/wiki/Phred_quality_score
+    // we do this A LOT
+    // so let's make a LUT
+    for(i = 0; i < MAXQVAL; ++i) {
+      QUALITY_TO_ERRORPROB[i] = pow(10, i/-10.0);
+    }
+
+  } else if (qtype == EXPECT_QUALITY) {
+
+    // we want exp( sum(log( prob correct )) ==
+    // prod(prob correct) ==
+    // prod(1.0 - prob incorrect)
+    for(i = 0; i < MAXQVAL; ++i) {
+      QUALITY_TO_ERRORPROB[i] = log(1.0 - pow(10, i/-10.0));
+    }
+
+  } else {
+    fprintf(stderr, "Illegal quality flag: %u", (int)qtype);
+    exit(EXIT_FAILURE);
   }
 
 }
@@ -267,6 +291,37 @@ sortKeyAndValue(pair<Report, pair<double, double> > first, pair<Report, pair<dou
   return false;
 }
 
+
+/*
+  Classical estimation of whether or not the substring is correct
+  assuming independence in quality/base information
+  Taken as pdoduct( 1-prob of error ) across base qualities...
+  Note that the LUT provides log(1-error probability)
+ */
+double
+getProbCorrect(const char *qseq, unsigned stop) {
+
+  unsigned i = 0;
+  unsigned qval;
+
+  double logsum=0.;
+
+  for(i=0; i < stop && *qseq; ++i, ++qseq) {
+    qval = *qseq - PHREDMINUS;
+    if (qval < 0)
+      qval = 0;
+    else if (qval >= MAXQVAL)
+      qval = MAXQVAL-1;
+    // equivalent to: += log(1-error prob)
+    // note that QUALITY_TO_ERRORPROB is constructed differently in this case
+    logsum += QUALITY_TO_ERRORPROB[ qval ];
+  }
+  
+  return exp(logsum);
+}
+
+
+
 /*
   Computes the probability that a set of quality scores
   will yield the correct haplotype.
@@ -279,7 +334,7 @@ sortKeyAndValue(pair<Report, pair<double, double> > first, pair<Report, pair<dou
  */
 
 double
-getProbCorrect(const char *qseq, unsigned stop) {
+getProbCorrectEdgar(const char *qseq, unsigned stop) {
 
   double errorSum=0.;
 
@@ -567,9 +622,12 @@ makeRecord(const char* dna, const char *qvals, unsigned left, unsigned right, un
   }
 
   double toAdd=1;
-  if (USE_QVALS) {
+  if (USE_QVALS == EXPECT_QUALITY) {
     toAdd=getProbCorrect(&(qvals[left]), len);
+  } else if (USE_QVALS == EDGAR_QUALITY) {
+    toAdd=getProbCorrectEdgar(&(qvals[left]), len);
   }
+    
 
   if (nonstandard) { // nonstandard letters are present (probably an N). Let's use the full ascii table.
     char *hap;
@@ -894,7 +952,7 @@ usage(char *arg0) {
     "\t-m integer (default 0; the maximum Hamming distance used with motif search. can only be 0 or 1)" << endl <<
     "\t-c configFile (REQUIRED; the locus config file used to define the STRs)" << endl << 
     "\t-p integer (The number of processors/cpus used)" << endl <<
-    "\t-q (Uses quality scores)" << endl <<
+    "\t-q (Uses quality scores. Optional arguments: -q E (uses number of errors expected, per Edgar, sum of error probs) or the default (-q X which is the expected probability of error, taken as product of probabilities that the base is correct )" << endl <<
     "\t-t filter (This filters on Type, e.g. AUTOSOMES; ie, it restricts the output to STRs that have the same type as specified in column 2 of the config file)" << endl <<
     "\t-o filename (This writes the output to filename, as opposed to standard out)" << endl <<
     "\t-f integer (Min match; this causes haplotypes with less than f occurences to be omitted from the final output file" << endl << endl;
@@ -923,7 +981,7 @@ parseArgs(int argc, char **argv, Options &opt) {
   opt.includeAnchors=false;
   opt.motifDistance=0;
   opt.distance=1;
-  opt.useQuality=false;
+  opt.useQuality=NO_QUALITY;
 
   bool errors=0;
   
@@ -938,7 +996,25 @@ parseArgs(int argc, char **argv, Options &opt) {
       } else if (argv[i][1] == 'i') {
         opt.includeAnchors=true;
       } else if (argv[i][1] == 'q') {
-        opt.useQuality=true;
+        opt.useQuality=EXPECT_QUALITY;
+
+        // my attempt at an optional argument
+        ++i;
+        if (argv[i] == NULL)
+          break;
+        else if (argv[i][1] == '\0') {
+          if (argv[i][0] == 'x' || argv[i][0] == 'X') {
+            opt.useQuality = EXPECT_QUALITY;
+          } else if (argv[i][0] == 'e' || argv[i][0] == 'E') {
+            opt.useQuality = EDGAR_QUALITY;
+          } else {
+            --i;
+          }
+        } else {
+          --i;
+        }
+
+        
       } else if (argv[i][1] == 't') {
         // filters the config file by type
         ++i;
@@ -1198,8 +1274,8 @@ main(int argc, char **argv) {
   int start = parseArgs(argc, argv, opt);
 
   if ( opt.useQuality) {
-    initQvalLUT();
-    USE_QVALS=true; // working with pthreads is much easier if we just use globals... 
+    initQvalLUT( opt.useQuality );
+    USE_QVALS=opt.useQuality; // working with pthreads is much easier if we just use globals... 
   }
   
   if (opt.numThreads == 0)

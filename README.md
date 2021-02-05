@@ -12,7 +12,7 @@ Double-click on batchCstr8.bat<br>
 
 This will make a directory that corresponds to each fastq file. The summarised data are in the allsequences.txt file, which is encoded in plain text (uncompressed).<br>
 <br>
-To make sense of these data, please use STRait Razor Online
+To make sense of these data, please use STRait Razor Online (SRO)
 
 Online application
 
@@ -27,6 +27,9 @@ Open-source
 https://github.com/ExpectationsManaged/STRaitRazorOnline
 
 
+# STRait Razor without SRO:
+
+We recommend using SRO. For legacy support (and those who like to ignore recommendations), you may wish to read the following:
 
 To make str8rzr work with compressed files, you'll need to follow the instructions below.
 

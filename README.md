@@ -12,14 +12,21 @@ Double-click on batchCstr8.bat<br>
 
 This will make a directory that corresponds to each fastq file. The summarised data are in the allsequences.txt file, which is encoded in plain text (uncompressed).<br>
 <br>
-To make sense of these data, please use the Excel-based workbooks developed by Jonathan King!
-Here's a link to a V3 compatible workbook.<br>
-https://www.dropbox.com/s/t3n0d2h6od0qek2/STRait%20Razor%20Analysis%20v3.xlsm?dl=1 <br>
-And here's a link to the manual (originally designed for previous versions of strait razor, but it all translates to v3). <br>
-https://www.unthsc.edu/graduate-school-of-biomedical-sciences/wp-content/uploads/sites/13/STRait-Razor-Analysis-Manual.pdf <br>
+To make sense of these data, please use STRait Razor Online
 
-The batch script (batchCstr8.bat) encodes information on the number of cores that it uses. You can make it use less or more
-as appropriate. You can also change the config file (to, say, the powerseq).
+Online application
+
+http://www.unthsc.edu/straitrazor
+
+Executable
+
+https://www.unthsc.edu/graduate-school-of-biomedical-sciences/laboratory-faculty-and-staff/strait-razor/
+
+Open-source
+
+https://github.com/ExpectationsManaged/STRaitRazorOnline
+
+
 
 To make str8rzr work with compressed files, you'll need to follow the instructions below.
 

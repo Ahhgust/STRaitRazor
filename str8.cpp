@@ -56,6 +56,7 @@ SOFTWARE.
 // version of strait razor!
 const float VERSION_NUM = 3.01;
 
+
 using namespace std;
 
 // the number of fastq records kept in memory (*2 ; one for each buffer in the double buffer)
@@ -72,7 +73,8 @@ struct Options {
   bool help; // prints a helpful usage statement. default 0
   bool noReverseComplement; // turns of reverse-complementing markers inferred to be on the negative strand
   bool includeAnchors;
-
+  bool useQuality;
+  
   FILE *out; // the output file. default=stdout
   char *config; // required! This is the NAME of config file
   int numThreads;
@@ -162,7 +164,14 @@ std::atomic<bool> nextdone(0); // this is the penultimate done ; ie, whether or 
 
 string MEM[ RECSINMEM ]; // buffers used for processing
 string OTHERMEM[ RECSINMEM ]; // these contain the DNA strings from the fastq file
+
+string QMEM[ RECSINMEM ]; // buffers used for processing
+string OTHERQMEM[ RECSINMEM ]; // these contain the DNA QUALITY strings from the fastq file
+
+
 string *records=NULL; // pointer used to alterante between MEM and OTHERMEM
+string *qrecords=NULL; // parallel array to records; contains quality scores
+
 istream *currentInputStream; //pointer to stdin / current file opened for reading. fastq format is assumed.
 
 // multithreading variables:
@@ -182,6 +191,13 @@ std::atomic<bool> buffered(0);
 std::atomic<int> startedWorking(0);
 #endif
 
+
+#define MAXQVAL 256
+double QUALITY_TO_ERRORPROB[MAXQVAL];
+// Phred-quality -33 is standard. just in case, this is the constant used.
+#define PHREDMINUS 33
+
+bool USE_QVALS = false;
 
 
 // information about the strs from the file:
@@ -203,15 +219,34 @@ unsigned long **leftFlankPosSum; // the position (sum) of the left-hand position
 unsigned long **rightFlankPosSum; // the position (sum) of the right-hand position match
 
 // the data structure used to keep the results
-typedef map<Report, pair<unsigned, unsigned>, CompareReport> Matches;
+//typedef map<Report, pair<unsigned, unsigned>, CompareReport> Matches;
+typedef map<Report, pair<double, double>, CompareReport> Matches;
 Matches *matches;
 
 
+// generates a lookup table
+// index i converts a quality score of i to it's probability
+// (ie, the probabilty that a given base with quality q is wrong)
+// in practice qvals < 100; I maxed
+void
+initQvalLUT() {
+  unsigned i;
+
+  // standard quality to probability (of error) computation
+  // see https://en.wikipedia.org/wiki/Phred_quality_score
+  // we do this A LOT
+  // so let's make a LUT
+  for(i = 0; i < MAXQVAL; ++i) {
+    QUALITY_TO_ERRORPROB[i] = pow(10, i/-10.0);
+  }
+
+}
 
 // I need to sort reports by both the key, and within equivalent keys, by value.
 bool
-sortKeyAndValue(pair<Report, pair<unsigned, unsigned> > first, pair<Report, pair<unsigned, unsigned> > second) {
-  
+//sortKeyAndValue(pair<Report, pair<unsigned, unsigned> > first, pair<Report, pair<unsigned, unsigned> > second) {
+sortKeyAndValue(pair<Report, pair<double, double> > first, pair<Report, pair<double, double> > second) {
+ 
 
       // first sort on the marker name
   unsigned i1 = first.first.strIndex;
@@ -232,16 +267,58 @@ sortKeyAndValue(pair<Report, pair<unsigned, unsigned> > first, pair<Report, pair
   return false;
 }
 
+/*
+  Computes the probability that a set of quality scores
+  will yield the correct haplotype.
+  Adapted From Edgar:   Error filtering, pair assembly and error correction for next-generation sequencing reads
+  First it computes the expected number of errors (assuming independence in the quality scores)
+  And it uses this cmopute the probability that the read would give the correct haplotype
+  Taken as 1-[ max(1.0, ExpectedErrors) ]
+  This is a good estimator of the probabilty that it is correct GIVEN
+  that the expected errors in the range[0,1]
+ */
+
+double
+getProbCorrect(const char *qseq, unsigned stop) {
+
+  double errorSum=0.;
+
+  unsigned i = 0;
+  unsigned qval;
+  // From Edgar:
+  // Error filtering, pair assembly and error correction for next-generation sequencing reads
+  // Expected number of errors for a given (substring of a ) read is
+  // the sum of the error probabilities
+  for(i=0; i < stop && *qseq; ++i, ++qseq) {
+
+    qval = *qseq - PHREDMINUS;
+    if (qval < 0)
+      qval = 0;
+    else if (qval >= MAXQVAL)
+      qval = MAXQVAL-1;
+
+        
+    errorSum += QUALITY_TO_ERRORPROB[ qval ];
+  }
+
+  if (errorSum >= 1.)
+    return 0.;
+  
+  return 1.0-errorSum;
+}
+
 
 void
-printReports(FILE *stream, map< Report, pair <unsigned, unsigned>, CompareReport> &hash, unsigned minCount, bool noRC) {
+printReports(FILE *stream, map< Report, pair <double, double>, CompareReport> &hash, unsigned minCount, bool noRC) {
 
 
-  vector< pair<Report, pair<unsigned, unsigned> > > vec(hash.begin(), hash.end() );
+  //  vector< pair<Report, pair<unsigned, unsigned> > > vec(hash.begin(), hash.end() );
+
+  vector< pair<Report, pair<double, double> > > vec(hash.begin(), hash.end() );
   sort( vec.begin(), vec.end() , sortKeyAndValue);
 
 
-  vector< pair<Report, pair<unsigned, unsigned> > >::iterator it = vec.begin();
+  vector< pair<Report, pair<double, double> > >::iterator it = vec.begin();
 
   unsigned i, j, stop, mod;
   int offset, period;
@@ -260,12 +337,12 @@ printReports(FILE *stream, map< Report, pair <unsigned, unsigned>, CompareReport
     if (rep.strIndex != prevStrIndex) {
       if (totalSkippedPositive + totalSkippedNegative >0) {
 
-	fprintf(stream, "%s:0.0\t0 bases\tSumBelowThreshold",  s.c_str());
-	if (noRC) 
-	  fprintf(stream, "\t\t%u\n",  totalSkippedPositive + totalSkippedNegative);
-	else
-	  fprintf(stream, "\t%u\t%u\n",  totalSkippedPositive , totalSkippedNegative);
-
+        fprintf(stream, "%s:0.0\t0 bases\tSumBelowThreshold",  s.c_str());
+        if (noRC) 
+          fprintf(stream, "\t\t%u\n",  totalSkippedPositive + totalSkippedNegative);
+        else
+          fprintf(stream, "\t%u\t%u\n",  totalSkippedPositive , totalSkippedNegative);
+        
       }
       prevStrIndex = rep.strIndex;
       totalSkippedPositive = totalSkippedNegative = 0;
@@ -290,30 +367,40 @@ printReports(FILE *stream, map< Report, pair <unsigned, unsigned>, CompareReport
     }
     if (offset) {
       fprintf(stream, "%s:%i.%i\t%u bases\t",  s.c_str(), period, offset,
-	     rep.hapLength);
+              rep.hapLength);
     } else {
       fprintf(stream, "%s:%i\t%u bases\t", s.c_str(), period, 
-	      rep.hapLength);
+              rep.hapLength);
     }
 
     if (rep.nonstandardLetters==false) {
       stop = (rep.hapLength / (MAXWORD/2.0));
       mod = rep.hapLength % (MAXWORD/2);
       for (i=0; i < stop; ++i) 
-	printBinaryWord(stream, rep.haplotype[i], MAXWORD/2);
+        printBinaryWord(stream, rep.haplotype[i], MAXWORD/2);
       
       if (mod) 
-	printBinaryWord(stream, rep.haplotype[i], mod);
+        printBinaryWord(stream, rep.haplotype[i], mod);
 
     } else {
       fprintf(stream, "%s", (char*)rep.haplotype);
     }
-    
-    if (noRC)
-      fprintf(stream, "\t\t%u\n", it->second.first + it->second.second );
-    else 
-      fprintf(stream, "\t%u\t%u\n", it->second.second, it->second.first );
 
+    if (USE_QVALS) {
+      
+      if (noRC)
+        fprintf(stream, "\t\t%f\n", it->second.first + it->second.second );
+      else 
+        fprintf(stream, "\t%f\t%f\n", it->second.second, it->second.first );
+
+    } else {
+      
+      if (noRC)
+        fprintf(stream, "\t\t%.0f\n", it->second.first + it->second.second );
+      else 
+        fprintf(stream, "\t%.0f\t%.0f\n", it->second.second, it->second.first );
+      
+    }
   }
 
   // grab the trailing values (if necessary)
@@ -336,23 +423,23 @@ printReports(FILE *stream, map< Report, pair <unsigned, unsigned>, CompareReport
       sumt=sum=0;
       leftC=rightC=0;
       for (i=0; i < (unsigned)opt.numThreads; ++i) {
-	sum += biasCounts[i][j];
-	sumt += totalCounts[i][j];
-	leftC += leftFlankPosSum[i][j];
-	rightC += rightFlankPosSum[i][j];
+        sum += biasCounts[i][j];
+        sumt += totalCounts[i][j];
+        leftC += leftFlankPosSum[i][j];
+        rightC += rightFlankPosSum[i][j];
       }
 
       fprintf(stream,  "%s\t%u\t%u\t" , (*c)[j].locusName.c_str(), sum, sumt);
       if (sumt + sum) {
-	printf("%.4f\t", sum/(double)(sumt+sum));
+        printf("%.4f\t", sum/(double)(sumt+sum));
       } else {
-	printf("NaN\t");
+        printf("NaN\t");
       }
 
       if (sumt) {
-	fprintf(stream, "%.1f\t%.1f\n", leftC/(double)sumt, rightC/(double)sumt);
+        fprintf(stream, "%.1f\t%.1f\n", leftC/(double)sumt, rightC/(double)sumt);
       } else {
-	fprintf(stream, "NaN\tNaN\n");
+        fprintf(stream, "NaN\tNaN\n");
       }
       
 
@@ -386,7 +473,7 @@ printReportsMT(FILE *stream) {
 
 
 bool
-buffer(string mem[]) {
+buffer(string mem[], string qmem[]) {
 
   unsigned i=0;
   string dummy;
@@ -398,24 +485,26 @@ buffer(string mem[]) {
       c = toupper(c);
 
     getline(*currentInputStream, dummy); // the +
-    getline(*currentInputStream, dummy); // the quality string (ignored)
+    getline(*currentInputStream, qmem[i]); // the quality string (ignored)
     ++i;
     if (i == RECSINMEM) {
-
+      
       int c = currentInputStream->peek();
       if (c == EOF) {
-	LASTREC = RECSINMEM;
-	return 1;
+        LASTREC = RECSINMEM;
+        return 1;
       }
       return 0;
     }
   }
-
+  
 
   LASTREC = i;
-  for ( ; i < RECSINMEM; ++i)
+  for ( ; i < RECSINMEM; ++i) {
     mem[i].clear();
-
+    qmem[i].clear();
+  }
+  
   return 1;
 }
 
@@ -464,7 +553,7 @@ revcompCstring(const char *dna, int len) {
 
  */
 void
-makeRecord(const char* dna, unsigned left, unsigned right, unsigned char orientation, unsigned strIndex, int id) {
+makeRecord(const char* dna, const char *qvals, unsigned left, unsigned right, unsigned char orientation, unsigned strIndex, int id) {
 
   int len = (int) (right - left);
   int wordlen = ceil(len / (MAXWORD/2.0)); //number of binarywords to represent a haplotype
@@ -475,6 +564,11 @@ makeRecord(const char* dna, unsigned left, unsigned right, unsigned char orienta
     if (*d != 'A' && *d != 'C' && *d != 'G' && *d != 'T') {
       nonstandard=true;
     }
+  }
+
+  double toAdd=1;
+  if (USE_QVALS) {
+    toAdd=getProbCorrect(&(qvals[left]), len);
   }
 
   if (nonstandard) { // nonstandard letters are present (probably an N). Let's use the full ascii table.
@@ -489,9 +583,9 @@ makeRecord(const char* dna, unsigned left, unsigned right, unsigned char orienta
 
     Report rep = {strIndex, (binaryword*) hap, true, len};
     if (orientation==REVERSEFLANK) {
-      ++(matches[id][rep].first);
+      (matches[id][rep].first) += toAdd;
     } else {
-      ++(matches[id][rep].second);
+      (matches[id][rep].second) += toAdd;
     }
 
   } else { // This reduces DNA into its 2-bit encoding (saving much space, and making lookup operations faster
@@ -503,7 +597,7 @@ makeRecord(const char* dna, unsigned left, unsigned right, unsigned char orienta
     
     for (int i=0; i < len; i += (MAXWORD/2), ++t) {
       if (i + left + MAXWORD/2 > right) // don't read past the end of the array
-	numChars=mod;
+        numChars=mod;
       
       *t = gatcToLong((char*)(&dna[i + left ]), numChars);
     }
@@ -522,9 +616,9 @@ makeRecord(const char* dna, unsigned left, unsigned right, unsigned char orienta
     }
     Report rep = {strIndex, haplotype, false, len};
     if (orientation==REVERSEFLANK) {
-      ++(matches[id][rep].first);
+      (matches[id][rep].first) += toAdd;
     } else {
-      ++(matches[id][rep].second);
+      (matches[id][rep].second) += toAdd;
     }
   }
 
@@ -557,6 +651,8 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 
   for (a=id ; a < RECSINMEM; a += opt.numThreads) {
     const char *dna = records[a].c_str(); // ascii representation of DNA string
+    const char *qvals = qrecords[a].c_str(); // quality scores baby!
+    
     unsigned dnalen = records[a].length();
 
 
@@ -574,9 +670,9 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
     for (unsigned j=0; j < stop; ++j, ++dna) {
       // this finds demonstrably wrong sequences (less than 'A' or greater than 'T' in the ascii table)
       if (*dna < 65 || *dna > 84) {
-	cerr << "Oops! I'm detecting an illegal character in the DNA string. The character is " << *dna << endl <<
-	  "And the record is " << dna << endl;
-	exit(EXIT_FAILURE);
+        cerr << "Oops! I'm detecting an illegal character in the DNA string. The character is " << *dna << endl <<
+          "And the record is " << dna << endl;
+        exit(EXIT_FAILURE);
       }
 
 
@@ -587,7 +683,7 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
         break;
 
       unsigned numMatches = trie->findPrefixMatch((char*)(dna), maxLen, matchIds, matchTypes);
-
+      
       for (unsigned n = 0; n < numMatches; ++n) {
         unsigned strIndex = matchIds[n];
         unsigned char orientation = matchTypes[n];
@@ -595,102 +691,102 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 
 #if DEBUG
         //	if (orientation < MOTIF) 
-	  cerr << "Read offset: " << j << " read # " << 
-	    a << " Str index " << strIndex << " Orientation " << (unsigned)orientation << endl;
+        cerr << "Read offset: " << j << " read # " << 
+          a << " Str index " << strIndex << " Orientation " << (unsigned)orientation << endl;
 #endif
 
-	if (lastHitRecord[ strIndex ] != (unsigned) a &&
-	    orientation < MOTIF) { // clear out the vectors for this STR; it's the first time we've seen this marker (in this read)
-	  fpMatches[strIndex].clear();
-	  rpMatches[strIndex].clear();
-	  frMatches[strIndex].clear();
-	  rrMatches[strIndex].clear();
-	  validMotif[strIndex]=0; // no valid motifs found
-	  lastHitRecord[strIndex ] = a;
-	}
+        if (lastHitRecord[ strIndex ] != (unsigned) a &&
+            orientation < MOTIF) { // clear out the vectors for this STR; it's the first time we've seen this marker (in this read)
+          fpMatches[strIndex].clear();
+          rpMatches[strIndex].clear();
+          frMatches[strIndex].clear();
+          rrMatches[strIndex].clear();
+          validMotif[strIndex]=0; // no valid motifs found
+          lastHitRecord[strIndex ] = a;
+        }
 
 
 
-	if (orientation == MOTIF || orientation == MOTIF_RC) { // common case
+        if (orientation == MOTIF || orientation == MOTIF_RC) { // common case
+          
+          if (lastHitRecord[ strIndex ] == (unsigned) a &&  ! validMotif[strIndex]) {  // we have at least one flank found for this locus for this read
+            // motifs! (currently the strand is ignored, as per the previous str8razor
 
-	  if (lastHitRecord[ strIndex ] == (unsigned) a &&  ! validMotif[strIndex]) {  // we have at least one flank found for this locus for this read
-	    // motifs! (currently the strand is ignored, as per the previous str8razor
-
-
-	    // we have at least one (valid) forward flank
-	    // and not enough reverse flanks
-	    if (fpMatches[strIndex].size() > 0 && 
-          rpMatches[strIndex].size() < (*c)[strIndex].reverseCount) {
-	      validMotif[strIndex]=1;
-	      // match is on the negative strand
-	    } else if (rrMatches[strIndex].size() > 0 && 
-		     frMatches[strIndex].size() < (*c)[strIndex].forwardCount) {
-	      validMotif[strIndex]=1;
+            
+            // we have at least one (valid) forward flank
+            // and not enough reverse flanks
+            if (fpMatches[strIndex].size() > 0 && 
+                rpMatches[strIndex].size() < (*c)[strIndex].reverseCount) {
+              validMotif[strIndex]=1;
+              // match is on the negative strand
+            } else if (rrMatches[strIndex].size() > 0 && 
+                       frMatches[strIndex].size() < (*c)[strIndex].forwardCount) {
+              validMotif[strIndex]=1;
 	    }
 
 	  }
-	// record where the flanks were found, and in which orientation
-	} else if (orientation==FORWARDFLANK) {
-
-	  if (! frMatches[strIndex].empty() &&
-	      frMatches[strIndex].back()  >= j - (*c)[strIndex].forwardLength) {
+          // record where the flanks were found, and in which orientation
+        } else if (orientation==FORWARDFLANK) {
+          
+          if (! frMatches[strIndex].empty() &&
+              frMatches[strIndex].back()  >= j - (*c)[strIndex].forwardLength) {
 	    
-	    continue; // overlap!
-	  }
+            continue; // overlap!
+          }
+
+          
+          
+          fpMatches[ strIndex ].push_back(j + (*c)[strIndex].forwardLength); // the index of the first base of the intervening haplotype
+          gotOne=true; 
+          
+        } else if (orientation == REVERSEFLANK) {
+          
+          // check to see if this reverse flank that we have is a substring (or overlaps) the forward flank (sadly, this happens. thank you Y chromosome!)
+          // if so, let's skip it
+          if ( ! fpMatches[strIndex].empty() && 
+               fpMatches[strIndex].back()  >= j) {
+            continue;
+          }
+          
+          rpMatches[ strIndex ].push_back(j);
+          // if specified, stop the search when we find the first STR that appears correct
+          if (opt.shortCircuit && 
+              rpMatches[ strIndex ].size() == (*c)[strIndex].reverseCount &&
+              fpMatches[ strIndex ].size() == (*c)[strIndex].forwardCount)
+            break;
+          
+        } else if (orientation == FORWARDFLANK_RC) {
+          
+          // and again, but on the negative strand;
+          // the 2nd flank overlaps the first flank; let's assume that the second match in the overlap is wrong.
+          if (! rrMatches[strIndex].empty() &&
+              rrMatches[strIndex].back()  >= j) {
+            continue;
+          }
+
+          frMatches[ strIndex ].push_back(j);
+          if (opt.shortCircuit && 
+              rrMatches[ strIndex ].size() == (*c)[strIndex].reverseCount &&
+              frMatches[ strIndex ].size() == (*c)[strIndex].forwardCount)
+            break;
+          
+          
+        } else if (orientation == REVERSEFLANK_RC) {
 
 
-	  
-	  fpMatches[ strIndex ].push_back(j + (*c)[strIndex].forwardLength); // the index of the first base of the intervening haplotype
-	  gotOne=true; 
-
-	} else if (orientation == REVERSEFLANK) {
-
-	  // check to see if this reverse flank that we have is a substring (or overlaps) the forward flank (sadly, this happens. thank you Y chromosome!)
-	  // if so, let's skip it
-	  if ( ! fpMatches[strIndex].empty() && 
-	       fpMatches[strIndex].back()  >= j) {
-	    continue;
-	  }
-
-	  rpMatches[ strIndex ].push_back(j);
-	  // if specified, stop the search when we find the first STR that appears correct
-	  if (opt.shortCircuit && 
-	      rpMatches[ strIndex ].size() == (*c)[strIndex].reverseCount &&
-	      fpMatches[ strIndex ].size() == (*c)[strIndex].forwardCount)
-	    break;
-
-	} else if (orientation == FORWARDFLANK_RC) {
-
-	  // and again, but on the negative strand;
-	  // the 2nd flank overlaps the first flank; let's assume that the second match in the overlap is wrong.
-	  if (! rrMatches[strIndex].empty() &&
-	      rrMatches[strIndex].back()  >= j) {
-	    continue;
-	  }
-
-	  frMatches[ strIndex ].push_back(j);
-	  if (opt.shortCircuit && 
-	      rrMatches[ strIndex ].size() == (*c)[strIndex].reverseCount &&
-	      frMatches[ strIndex ].size() == (*c)[strIndex].forwardCount)
-	    break;
-
-
-	} else if (orientation == REVERSEFLANK_RC) {
-
-
-	  if (! frMatches[strIndex].empty() &&
-	      frMatches[strIndex].back()  >= j - (*c)[strIndex].reverseLength) {
+          if (! frMatches[strIndex].empty() &&
+              frMatches[strIndex].back()  >= j - (*c)[strIndex].reverseLength) {
 	    
-	    continue; // overlap!
-	  }
+            continue; // overlap!
+          }
 
 
-	  rrMatches[ strIndex ].push_back(j + (*c)[strIndex].reverseLength); // the index of the first base of the intervening haplotype
-	  gotOne=true; 
-
-	  // haven't found a valid motif for this STR yet
-	} 
-
+          rrMatches[ strIndex ].push_back(j + (*c)[strIndex].reverseLength); // the index of the first base of the intervening haplotype
+          gotOne=true; 
+          
+          // haven't found a valid motif for this STR yet
+        } 
+        
       }
     } // done reading read
     dna = records[a].c_str(); // reset the pointer
@@ -717,13 +813,13 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 	      
                 if (fpMatches[i].back()  < rpMatches[i].front()) {
                   if (opt.includeAnchors) 
-                    makeRecord(dna, fpMatches[i].front() - (*c)[i].forwardLength, rpMatches[i].back() + (*c)[i].reverseLength, FORWARDFLANK, i, id);
+                    makeRecord(dna, qvals, fpMatches[i].front() - (*c)[i].forwardLength, rpMatches[i].back() + (*c)[i].reverseLength, FORWARDFLANK, i, id);
                   else
-                    makeRecord(dna, fpMatches[i].front(), rpMatches[i].back(), FORWARDFLANK, i, id);
+                    makeRecord(dna, qvals, fpMatches[i].front(), rpMatches[i].back(), FORWARDFLANK, i, id);
                 }
-
+                
               }
-
+              
             } else if (opt.verbose && rpMatches[i].size() < (*c)[i].reverseCount ) { // not enough matches for the second anchor
               ++biasCounts[id][i];
             }
@@ -736,12 +832,12 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
               cerr << c->at(i).locusName << " STR on reverse strand " << i << " fpsize " << fpMatches[i].size() <<
                 " rpsize " << rpMatches[i].size() << endl;
 #endif
-	      
+              
               if (rrMatches[i].back() < frMatches[i].front() ) {
                 if (opt.includeAnchors)
-                  makeRecord(dna, rrMatches[i].front() - (*c)[i].reverseLength , frMatches[i].back()+(*c)[i].forwardLength, REVERSEFLANK, i, id);
+                  makeRecord(dna, qvals, rrMatches[i].front() - (*c)[i].reverseLength , frMatches[i].back()+(*c)[i].forwardLength, REVERSEFLANK, i, id);
                 else
-                  makeRecord(dna, rrMatches[i].front(), frMatches[i].back(), REVERSEFLANK, i, id);	      
+                  makeRecord(dna, qvals, rrMatches[i].front(), frMatches[i].back(), REVERSEFLANK, i, id);	      
               }
               
             } else if (opt.verbose && frMatches[i].size() < (*c)[i].forwardCount ) {
@@ -759,8 +855,6 @@ processDNA_Trie(int id, unsigned *matchIds, unsigned char *matchTypes) {
 
 
 
-
-
 void
 findMatchesOneThread() {
 
@@ -771,8 +865,9 @@ findMatchesOneThread() {
   unsigned char *matchTypes = new unsigned char[ numStrs * 4];
   
   records = MEM; // we're only using one of the buffers...
+  qrecords=QMEM;
   while (!done) {
-    done = buffer(MEM);
+    done = buffer(MEM, QMEM);
     processDNA_Trie(0, matchIds, matchTypes);
   }
     
@@ -799,6 +894,7 @@ usage(char *arg0) {
     "\t-m integer (default 0; the maximum Hamming distance used with motif search. can only be 0 or 1)" << endl <<
     "\t-c configFile (REQUIRED; the locus config file used to define the STRs)" << endl << 
     "\t-p integer (The number of processors/cpus used)" << endl <<
+    "\t-q (Uses quality scores)" << endl <<
     "\t-t filter (This filters on Type, e.g. AUTOSOMES; ie, it restricts the output to STRs that have the same type as specified in column 2 of the config file)" << endl <<
     "\t-o filename (This writes the output to filename, as opposed to standard out)" << endl <<
     "\t-f integer (Min match; this causes haplotypes with less than f occurences to be omitted from the final output file" << endl << endl;
@@ -827,128 +923,130 @@ parseArgs(int argc, char **argv, Options &opt) {
   opt.includeAnchors=false;
   opt.motifDistance=0;
   opt.distance=1;
-
+  opt.useQuality=false;
 
   bool errors=0;
   
   for (i=1; i < argc; ++i) {
     if (argv[i][0] == '-') {
       if (argv[i][1] == 'h') {
-	opt.help=1;
+        opt.help=1;
       } else if (argv[i][1] == 's') {
-	opt.shortCircuit=1;
+        opt.shortCircuit=1;
       } else if (argv[i][1] == 'v') {
-	opt.verbose=1;
+        opt.verbose=1;
       } else if (argv[i][1] == 'i') {
-	opt.includeAnchors=true;
+        opt.includeAnchors=true;
+      } else if (argv[i][1] == 'q') {
+        opt.useQuality=true;
       } else if (argv[i][1] == 't') {
-	// filters the config file by type
-	++i;
-	opt.type = argv[i];
-	if (opt.type==NULL) {
-	  cerr << "Oops. -t flag requires a type!" << endl;
-	  errors=1;
-	}
+        // filters the config file by type
+        ++i;
+        opt.type = argv[i];
+        if (opt.type==NULL) {
+          cerr << "Oops. -t flag requires a type!" << endl;
+          errors=1;
+        }
       } else if (argv[i][1] == 'n') {
-	opt.noReverseComplement=1; 
+        opt.noReverseComplement=1; 
       } else if (argv[i][1] == 'o') { // setting output file
-	if (i == argc-1) {
-	  cerr << endl<< "Option -o requires an argument\nEG, -o outFile.txt" << endl << endl;
-	  errors=1;
-	} else {
-	  ++i;
-	  opt.out = fopen(argv[i], "w");
-	}
+        if (i == argc-1) {
+          cerr << endl<< "Option -o requires an argument\nEG, -o outFile.txt" << endl << endl;
+          errors=1;
+        } else {
+          ++i;
+          opt.out = fopen(argv[i], "w");
+        }
       } else if (argv[i][1] == 'f') { // setting min records to print
-	if (i == argc-1) {
-	  cerr << endl << "Option -f requires an integer; the smallest number of haplotype-counts that are allowed to be printed" << endl << endl;
-	  errors=1;
-	} else {
-	  ++i;
-	  char *s = argv[i];
-	  while (*s >= '0' && *s <= '9') {
-	    opt.minPrint = (opt.minPrint*10)+(*s - '0');
-	    ++s;
-	  }
-	  if (s == argv[i]) {
-	    cerr << endl << "Option -f requires an integer; the smallest number of haplotype-counts that are allowed to be printed, not " << s  << endl << endl;
-	    errors=1;
-	  }
-	}
+        if (i == argc-1) {
+          cerr << endl << "Option -f requires an integer; the smallest number of haplotype-counts that are allowed to be printed" << endl << endl;
+          errors=1;
+        } else {
+          ++i;
+          char *s = argv[i];
+          while (*s >= '0' && *s <= '9') {
+            opt.minPrint = (opt.minPrint*10)+(*s - '0');
+            ++s;
+          }
+          if (s == argv[i]) {
+            cerr << endl << "Option -f requires an integer; the smallest number of haplotype-counts that are allowed to be printed, not " << s  << endl << endl;
+            errors=1;
+          }
+        }
       } else if (argv[i][1] == 'a') { // setting the degeneracy/distance with anchors when constructing the trie
-	if (i == argc-1) {
-	  cerr << endl << "Option -a requires an integer in the range [0,2] (inclusive); the (max) hamming distance used when searching for anchors" << endl << endl;
-	  errors=1;
-	} else {
-	  ++i;
-	  char *s = argv[i];
-	  opt.distance = (*s - '0');
-	  if (s[1] != 0 || opt.distance > 2) {
-	    cerr << endl << "Option -a requires a an integer in the range [0,2] (inclusive); the (max) hamming distance used when searching for anchors, not: " << s << endl;
-	    errors=1;
-	  }
-	  //	  cerr << "Distance is " << ((unsigned)opt.distance) << endl;
-	}
+        if (i == argc-1) {
+          cerr << endl << "Option -a requires an integer in the range [0,2] (inclusive); the (max) hamming distance used when searching for anchors" << endl << endl;
+          errors=1;
+        } else {
+          ++i;
+          char *s = argv[i];
+          opt.distance = (*s - '0');
+          if (s[1] != 0 || opt.distance > 2) {
+            cerr << endl << "Option -a requires a an integer in the range [0,2] (inclusive); the (max) hamming distance used when searching for anchors, not: " << s << endl;
+            errors=1;
+          }
+          //	  cerr << "Distance is " << ((unsigned)opt.distance) << endl;
+        }
       } else if (argv[i][1] == 'm') { // setting the degeneracy/distance with motifs when constructing the trie
-	if (i == argc-1) {
-	  cerr << endl << "Option -m requires a 0 or a 1; the (max) hamming distance used when searching for motifs" << endl << endl;
+        if (i == argc-1) {
+          cerr << endl << "Option -m requires a 0 or a 1; the (max) hamming distance used when searching for motifs" << endl << endl;
 	  errors=1;
-	} else {
-	  ++i;
-	  char *s = argv[i];
-	  opt.motifDistance = (*s - '0');
-	  if (s[1] != 0 || opt.motifDistance > 1) {
-	    cerr << endl << "Option -m requires a 0 or a 1 (inclusive); the (max) hamming distance used when searching for motifs, not: " << s << endl;
-	    errors=1;
-	  }
-	}
+        } else {
+          ++i;
+          char *s = argv[i];
+          opt.motifDistance = (*s - '0');
+          if (s[1] != 0 || opt.motifDistance > 1) {
+            cerr << endl << "Option -m requires a 0 or a 1 (inclusive); the (max) hamming distance used when searching for motifs, not: " << s << endl;
+            errors=1;
+          }
+        }
       } else if (argv[i][1] == 'p') { // setting the number of threads/processors
-	if (i == argc-1) {
-	  cerr << endl << "Option -p requires an integer; the number of processors needed" << endl << endl;
-	  errors=1;
-	} else {
-	  ++i;
-	  char *s = argv[i];
-	  opt.numThreads=0;
-	  while (*s >= '0' && *s <= '9') {
-	    opt.numThreads = (opt.numThreads*10)+(*s - '0');
-	    ++s;
-	  }
-	  if (s == argv[i]) {
-	    cerr << endl << "Option -p requires an integer; not " << s  << endl << endl;
-	    errors=1;
-	  }
-
+        if (i == argc-1) {
+          cerr << endl << "Option -p requires an integer; the number of processors needed" << endl << endl;
+          errors=1;
+        } else {
+          ++i;
+          char *s = argv[i];
+          opt.numThreads=0;
+          while (*s >= '0' && *s <= '9') {
+            opt.numThreads = (opt.numThreads*10)+(*s - '0');
+            ++s;
+          }
+          if (s == argv[i]) {
+            cerr << endl << "Option -p requires an integer; not " << s  << endl << endl;
+            errors=1;
+          }
+          
 #ifdef NOTHREADS
-
-	  if (opt.numThreads > 1) {
-	  cerr << "This program was compiled w/o threads, yet you are trying to use multithreading. You can't do both!" << endl <<
-	    "Please either recompile this program with threads, or set the number of threads to 1!!" << endl;
-  	    exit(EXIT_FAILURE);
-	  } 
+          
+          if (opt.numThreads > 1) {
+            cerr << "This program was compiled w/o threads, yet you are trying to use multithreading. You can't do both!" << endl <<
+              "Please either recompile this program with threads, or set the number of threads to 1!!" << endl;
+            exit(EXIT_FAILURE);
+          } 
 #endif
-
-	}
+          
+        }
       } else if (argv[i][1] == 'c') { // this config file
-	if (i == argc-1) {
-	  cerr << endl<< "Option -c requires a file; ie, the config file" << endl << endl;
-	  errors=1;
-	} else {
-	  ++i;
-	  opt.config = argv[i];
-	}
+        if (i == argc-1) {
+          cerr << endl<< "Option -c requires a file; ie, the config file" << endl << endl;
+          errors=1;
+        } else {
+          ++i;
+          opt.config = argv[i];
+        }
       } else if (argv[i][1] == '-') { // unix convention; force the end of flags
-	break;
+        break;
       } else {
-	cerr << endl <<  "Unknown option: " << argv[i]  << endl << endl;
-	errors=1;
+        cerr << endl <<  "Unknown option: " << argv[i]  << endl << endl;
+        errors=1;
       }
 
     } else
       break;
-
+    
   }
-
+  
   if (opt.config==NULL) {
     cerr << endl <<  "Missing required flag: -c configfile"  << endl << endl;
     errors=1;
@@ -1007,12 +1105,15 @@ workerThread(void *arg) {
       ; // ie, wait for buffered=1 assignment
 
     startedWorking=0;
-
-    if (records==MEM)
+    // swap the pointers...
+    if (records==MEM) {
       records = OTHERMEM;
-    else
+      qrecords = OTHERQMEM;
+    } else {
       records = MEM;
-
+      qrecords = QMEM;
+    }
+    
     buffered=0; // we set buffered=0; ie, the other buffer needs to get filled
 
     if (nextdone)
@@ -1040,11 +1141,13 @@ workerThread(void *arg) {
 void *
 writerThread(void *arg) {
   
-  done=buffer(MEM); // read in a bunch of data
+  done=buffer(MEM, QMEM); // read in a bunch of data
   if (done)
     nextdone = true;
 
   records = MEM; // set up the pointer
+  qrecords=QMEM;
+  
   workersWorking= opt.numThreads; // let the workers start processing the data
 
   unsigned i=0;
@@ -1052,9 +1155,9 @@ writerThread(void *arg) {
     ++i;
 
     if (records == MEM) 
-      nextdone=buffer(OTHERMEM);
+      nextdone=buffer(OTHERMEM, OTHERQMEM);
     else 
-      nextdone=buffer(MEM);
+      nextdone=buffer(MEM, QMEM);
 
     buffered=1; // the double buffer is set up
 
@@ -1094,6 +1197,11 @@ main(int argc, char **argv) {
 
   int start = parseArgs(argc, argv, opt);
 
+  if ( opt.useQuality) {
+    initQvalLUT();
+    USE_QVALS=true; // working with pthreads is much easier if we just use globals... 
+  }
+  
   if (opt.numThreads == 0)
     opt.numThreads=1;
   
@@ -1199,7 +1307,7 @@ main(int argc, char **argv) {
 
 
     if (opt.numThreads < 2) 
-      findMatchesOneThread( );
+      findMatchesOneThread(  );
     else {
 #ifndef NOTHREADS
       int err;
@@ -1209,21 +1317,21 @@ main(int argc, char **argv) {
       err = pthread_create(&t, NULL, writerThread, NULL ); 
       if (err) {
         cerr << "Error creating writer thread" << endl;
-	exit(EXIT_FAILURE);
+        exit(EXIT_FAILURE);
       }
       threads.push_back(t);
 
       for (int j=0; j < opt.numThreads; ++j) {
-	err = pthread_create(&t, NULL, workerThread, (void*) &(ids[j]) ); 
-	if (err) {
-	  cerr << "Error creating thread number: " << j << endl;
-	  exit(EXIT_FAILURE);
-	}
-	threads.push_back(t);
+        err = pthread_create(&t, NULL, workerThread, (void*) &(ids[j]) ); 
+        if (err) {
+          cerr << "Error creating thread number: " << j << endl;
+          exit(EXIT_FAILURE);
+        }
+        threads.push_back(t);
       }
       for (list<pthread_t>::iterator itr = threads.begin(); itr != threads.end(); ++itr) { // collect the threads when we're done
-	t = *itr;
-	pthread_join(t, NULL);
+        t = *itr;
+        pthread_join(t, NULL);
       }
 
       threads.clear();
@@ -1241,7 +1349,7 @@ main(int argc, char **argv) {
 
     currentInputStream = &cin;
     if (opt.numThreads < 2) 
-      findMatchesOneThread( );
+      findMatchesOneThread(  );
 
     else {
 #ifndef NOTHREADS
@@ -1252,21 +1360,21 @@ main(int argc, char **argv) {
       err = pthread_create(&t, NULL, writerThread, NULL ); 
       if (err) {
         cerr << "Error creating writer thread" << endl;
-	exit(EXIT_FAILURE);
+        exit(EXIT_FAILURE);
       }
       threads.push_back(t);
       
       for (int j=0; j < opt.numThreads; ++j) {
-	err = pthread_create(&t, NULL, workerThread, (void*) &ids[j] ); 
-	if (err) {
-	  cerr << "Error creating thread number: " << j << endl;
-	  exit(EXIT_FAILURE);
-	}
-	threads.push_back(t);
+        err = pthread_create(&t, NULL, workerThread, (void*) &ids[j] ); 
+        if (err) {
+          cerr << "Error creating thread number: " << j << endl;
+          exit(EXIT_FAILURE);
+        }
+        threads.push_back(t);
       }
       for (list<pthread_t>::iterator itr = threads.begin(); itr != threads.end(); ++itr) { // collect the threads when we're done
-	t = *itr;
-	pthread_join(t, NULL);
+        t = *itr;
+        pthread_join(t, NULL);
       }
 
       threads.clear();

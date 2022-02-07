@@ -32,7 +32,7 @@ Executable
 
 https://www.unthsc.edu/graduate-school-of-biomedical-sciences/laboratory-faculty-and-staff/strait-razor/
 
-Open-source
+Source code
 
 https://github.com/ExpectationsManaged/STRaitRazorOnline
 

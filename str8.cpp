@@ -36,6 +36,7 @@ SOFTWARE.
 #include <cstring>
 #include <cctype>
 #include <limits.h>
+#include <tuple>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -72,6 +73,7 @@ struct Options {
   bool help; // prints a helpful usage statement. default 0
   bool noReverseComplement; // turns of reverse-complementing markers inferred to be on the negative strand
   bool includeAnchors;
+  bool printHeader; // default false; when true prints a TSV with a header
   char useQuality;
   
   FILE *out; // the output file. default=stdout
@@ -128,10 +130,10 @@ struct CompareReport {
       binaryword *b2 = b.haplotype;
       
       for (i=0; i < lengthInWords; ++i, ++b1, ++b2) {
-	if (*b1 < *b2)
-	  return true;
-	else if (*b1 > *b2)
-	  return false;
+        if (*b1 < *b2)
+          return true;
+        else if (*b1 > *b2)
+          return false;
       }
 
     } else { // compare char*s
@@ -139,10 +141,10 @@ struct CompareReport {
       char *b2 = (char*) b.haplotype;
 
       for (int i=0; i < a.hapLength; ++i, ++b1, ++b2) {
-	if (*b1 < *b2)
-	  return true;
-	else if (*b1 > *b2)
-	  return false;
+        if (*b1 < *b2)
+          return true;
+        else if (*b1 > *b2)
+          return false;
       }
     }
 
@@ -228,7 +230,16 @@ unsigned long **rightFlankPosSum; // the position (sum) of the right-hand positi
 
 // the data structure used to keep the results
 //typedef map<Report, pair<unsigned, unsigned>, CompareReport> Matches;
-typedef map<Report, pair<double, double>, CompareReport> Matches;
+
+// first and second names are bad, but they let me very easily extend from a std::pair to this bad boy
+struct HapCounter {
+  unsigned first; // count of haplotype on forward strand
+  unsigned second; // and reverse
+  double fq;  // ditto for quality sums
+  double rq;
+};
+
+typedef map<Report, HapCounter, CompareReport> Matches;
 Matches *matches;
 
 
@@ -269,7 +280,7 @@ initQvalLUT(char qtype) {
 // I need to sort reports by both the key, and within equivalent keys, by value.
 bool
 //sortKeyAndValue(pair<Report, pair<unsigned, unsigned> > first, pair<Report, pair<unsigned, unsigned> > second) {
-sortKeyAndValue(pair<Report, pair<double, double> > first, pair<Report, pair<double, double> > second) {
+sortKeyAndValue(pair<Report, HapCounter > first, pair<Report, HapCounter > second) {
  
 
       // first sort on the marker name
@@ -279,7 +290,7 @@ sortKeyAndValue(pair<Report, pair<double, double> > first, pair<Report, pair<dou
   // different loci
   if (i2 < i1) 
     return false;
-  else if (i1 < i2) 
+  else if  (i1 < i2) 
     return true;
 
 
@@ -295,7 +306,7 @@ sortKeyAndValue(pair<Report, pair<double, double> > first, pair<Report, pair<dou
 /*
   Classical estimation of whether or not the substring is correct
   assuming independence in quality/base information
-  Taken as pdoduct( 1-prob of error ) across base qualities...
+  Taken as product( 1-prob of error ) across base qualities...
   Note that the LUT provides log(1-error probability)
  */
 double
@@ -364,16 +375,16 @@ getProbCorrectEdgar(const char *qseq, unsigned stop) {
 
 
 void
-printReports(FILE *stream, map< Report, pair <double, double>, CompareReport> &hash, unsigned minCount, bool noRC) {
+printReports(FILE *stream, map< Report, HapCounter, CompareReport> &hash, unsigned minCount, bool noRC) {
 
 
   //  vector< pair<Report, pair<unsigned, unsigned> > > vec(hash.begin(), hash.end() );
 
-  vector< pair<Report, pair<double, double> > > vec(hash.begin(), hash.end() );
+  vector< pair<Report, HapCounter > > vec(hash.begin(), hash.end() );
   sort( vec.begin(), vec.end() , sortKeyAndValue);
 
 
-  vector< pair<Report, pair<double, double> > >::iterator it = vec.begin();
+  vector< pair<Report, HapCounter > >::iterator it = vec.begin();
 
   unsigned i, j, stop, mod;
   int offset, period;
@@ -382,7 +393,25 @@ printReports(FILE *stream, map< Report, pair <double, double>, CompareReport> &h
   unsigned totalSkippedNegative = 0;
   unsigned prevStrIndex = UINT_MAX;
   Report rep;
+  
+  if (opt.printHeader) {
+    fprintf(stream, "Locus\tLength\tHaplotype\t");
+    if (noRC) {
+      fprintf(stream, "Count");
+    } else {
+      fprintf(stream, "ForwardCount\tReverseCount");
+    }
+    
+    if (opt.useQuality) {
+      if (noRC) 
+        fprintf(stream, "\tForwardQsum");
+      else
+        fprintf(stream, "\tForwardQsum\tReverseQsum");
+    }
+    fprintf(stream, "\n");
+  }
 
+  
   for ( ; it != vec.end(); ++it) {
 
     rep = it->first;
@@ -441,20 +470,21 @@ printReports(FILE *stream, map< Report, pair <double, double>, CompareReport> &h
       fprintf(stream, "%s", (char*)rep.haplotype);
     }
 
+      
+    if (noRC)
+      fprintf(stream, "\t\t%u", it->second.first + it->second.second );
+    else 
+      fprintf(stream, "\t%u\t%u", it->second.second, it->second.first );
+
     if (USE_QVALS) {
       
       if (noRC)
-        fprintf(stream, "\t\t%f\n", it->second.first + it->second.second );
+        fprintf(stream, "\t\t%f\n", it->second.fq + it->second.rq );
       else 
-        fprintf(stream, "\t%f\t%f\n", it->second.second, it->second.first );
-
+        fprintf(stream, "\t%f\t%f\n", it->second.rq, it->second.fq );
+      
     } else {
-      
-      if (noRC)
-        fprintf(stream, "\t\t%.0f\n", it->second.first + it->second.second );
-      else 
-        fprintf(stream, "\t%.0f\t%.0f\n", it->second.second, it->second.first );
-      
+      fprintf(stream, "\n");
     }
   }
 
@@ -641,9 +671,19 @@ makeRecord(const char* dna, const char *qvals, unsigned left, unsigned right, un
 
     Report rep = {strIndex, (binaryword*) hap, true, len};
     if (orientation==REVERSEFLANK) {
-      (matches[id][rep].first) += toAdd;
+
+      if (USE_QVALS) {
+        (matches[id][rep].fq) += toAdd;
+      }
+      
+      ++(matches[id][rep].first);
     } else {
-      (matches[id][rep].second) += toAdd;
+
+      if (USE_QVALS) {
+        (matches[id][rep].rq) += toAdd;
+      }
+      
+      ++(matches[id][rep].second);
     }
 
   } else { // This reduces DNA into its 2-bit encoding (saving much space, and making lookup operations faster
@@ -674,9 +714,20 @@ makeRecord(const char* dna, const char *qvals, unsigned left, unsigned right, un
     }
     Report rep = {strIndex, haplotype, false, len};
     if (orientation==REVERSEFLANK) {
-      (matches[id][rep].first) += toAdd;
+
+      if (USE_QVALS) {
+        (matches[id][rep].fq) += toAdd;
+      }
+      
+      ++(matches[id][rep].first);
+
     } else {
-      (matches[id][rep].second) += toAdd;
+      
+      if (USE_QVALS) {
+        (matches[id][rep].rq) += toAdd;
+      }
+      
+      ++(matches[id][rep].second);
     }
   }
 
@@ -944,6 +995,7 @@ usage(char *arg0) {
   cerr << endl << "IE, This program takes in standard input, or a bunch of (uncompressed) fastq files\nAnd remember, options are specified *before* the configfile and fastqs (ie, the arguments)" << endl << endl;
   cerr << "Possible arguments:" << endl << endl << 
     "\t-h (help; causes this to be printed)" << endl <<
+    "\t-d (heaDer; prints a header (column identifiers) to the tsv" << endl <<
     "\t-n (no reverse complement-- this turns off the default behavior of reverse-complementing matches on the negative strand)" << endl <<
     "\t-v (verbose ; prints out additional diagnostic information)" << endl <<
     "\t-i (Include anchors ; includes the Anchor sequences in the reported haplotypes)" << endl << endl <<
@@ -979,6 +1031,7 @@ parseArgs(int argc, char **argv, Options &opt) {
   opt.useTrie=1;
   opt.type=NULL;
   opt.includeAnchors=false;
+  opt.printHeader=false;
   opt.motifDistance=0;
   opt.distance=1;
   opt.useQuality=NO_QUALITY;
@@ -989,6 +1042,8 @@ parseArgs(int argc, char **argv, Options &opt) {
     if (argv[i][0] == '-') {
       if (argv[i][1] == 'h') {
         opt.help=1;
+      } else if (argv[i][1] == 'd') {
+        opt.printHeader=1;
       } else if (argv[i][1] == 's') {
         opt.shortCircuit=1;
       } else if (argv[i][1] == 'v') {

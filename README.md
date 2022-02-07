@@ -2,6 +2,15 @@
 
 ### Documentation
 
+**Note on usage**
+
+STRait Razor is a *pair*. It needs the executable/binary (.exe on Windows) and it needs a config file. <br>
+The config file requires **optimization**. In general it will not work well if you try out a new chemistry  
+unless you do things to make it work well! For example, the ForenSeq config file we supply is (not surprisingly) designed for the ForenSeq and nothing else.
+We take care to evaluate the tradeoff between locus size and throughput (in general, larger loci give more information content, but less reads will give support to said content). If you try a different chemistry, that size/throughput tradeoff will be *different*, similarly, the rules for how an allele is deemed to be present may need to be changed. This is especially true if the reads are short and/or if you are not using a PCR-based assay.  <br><br>
+If you want to evaluate STRait Razor on a different chemistry, please feel free to reach out to us. 
+
+
 **Quick and dirty start** (no support for compressed files, not a very sustainable way to do research) <br>
 Windows users:<br>
 Make a directory.<br>

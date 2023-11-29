@@ -99,7 +99,7 @@ Also note, if you want to do more analyses within the same directory, you may wa
 
 To make sense of these data, please use the Excel-based workbooks developed by Jonathan King!
 Here's a link to a V3 compatible workbook. <br>
-https://www.dropbox.com/s/t3n0d2h6od0qek2/STRait%20Razor%20Analysis%20v3.xlsm?dl=1 <br>
+https://www.dropbox.com/scl/fi/nxzprapt6dlcxzxo1ng6w/STRait-Razor-v3-Analysis.xlsm?rlkey=f1lys2nvewgzji1vfill77equ&dl=1 <br>
 And here's a link to the manual (originally designed for previous versions of strait razor, but it all translates to v3). <br>
 https://www.unthsc.edu/graduate-school-of-biomedical-sciences/wp-content/uploads/sites/13/STRait-Razor-Analysis-Manual.pdf <br>
 

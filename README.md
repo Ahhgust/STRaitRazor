@@ -195,6 +195,22 @@ ii.	Allowing for n matches allows the extraction of duplicated loci, and when n 
 Note that loci are allowed to overlap (thus permitting the extraction of SNPs from within the haplotype). Once a locus has been found within a read, the intervening haplotype is extracted. The haplotype itself is recorded, and the number of times it is observed. This recording includes whether or not the haplotype was found on the positive or negative strand (as defined by the config file).<br>
 <br>
 
+Allsequences text file description:<br>
+str8rzr's primary output is a text file (allsequences.txt) that contains the following information.
+
+|#Marker Name: Length-based Allele	| String Length |	Sequence-based Allele             |  Read Depth (Forward)     | Read Depth (Reverse)| 
+| :---------: | :--: | :---------------------:  | :-------------: | :-----------: | 
+|CSF1PO:10	      | 92 bases    | CTGTTCTAAGTACTTCCTATCTATCTA...	  | 0    | 587| 
+|CSF1PO:12	    | 100 bases	   | CTGTTCTAAGTACTTCCTATCTATCTA...	  | 0    | 510| 
+|CSF1PO:11	    | 96 bases	   | CTGTTCTAAGTACTTCCTATCTATCTA...	  | 0    | 21| 
+
+The format is (by column) (lines beginning with a # are ignored):<br>
+1.	Markers have a name and a CE allele designation (length-based allele).<br>
+2.	The length-based value is defined in the absence of ladder by the number of bases.<br>
+3.	The more pertinent information is the string (sequence-based allele or haplotype).<br>
+4.	Read depth of the string in the orientation provided by the configuration file (via anchors). For all native configs, the orientation is forward to the reference sequence (i.e., hg38); however, custom configuration files from users may have different orientation locus-to-locus.<br>
+5.	Read depth of the string in the reverse complement of the orientation provided by the configuration file (via anchors). For all native configs, the orientation is reverse to the reference sequence (i.e., hg38); however, custom configuration files from users may have different orientation locus-to-locus.<br><br>
+
 ### Description of flags
     Running str8rzr with no arguments to see the flags/options. EG:
     
